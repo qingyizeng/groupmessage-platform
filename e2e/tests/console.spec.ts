@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-const GATEWAY = 'http://localhost:4101';
+const GATEWAY = process.env.E2E_GATEWAY_URL ?? 'http://localhost:4101';
 
 async function login(page: Page, user: 'admin' | 'viewer') {
   await page.goto('/login');

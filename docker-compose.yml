@@ -6,7 +6,7 @@ services:
       POSTGRES_PASSWORD: gmp
       POSTGRES_DB: gmp
     ports:
-      - "55432:5432"
+      - "${POSTGRES_HOST_PORT:-55432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -16,25 +16,30 @@ services:
       retries: 30
 
   mock-gateway:
-    build: .
+    build:
+      context: .
+      args:
+        NODE_IMAGE: ${NODE_IMAGE:-node:latest}
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmjs.org}
+    image: gmp-app:latest
     command: pnpm --filter @gmp/mock-gateway start
     environment:
       PORT: 4001
       PUBLIC_URL: http://mock-gateway:4001
       MOCK_TIMINGS: ${MOCK_TIMINGS:-realistic}
     ports:
-      - "4001:4001"
+      - "${GATEWAY_HOST_PORT:-4001}:4001"
 
   mock-agent:
-    build: .
+    image: gmp-app:latest
     command: pnpm --filter @gmp/mock-agent start
     environment:
       PORT: 4002
     ports:
-      - "4002:4002"
+      - "${AGENT_HOST_PORT:-4002}:4002"
 
   server:
-    build: .
+    image: gmp-app:latest
     command: sh -c "pnpm --filter @gmp/server migrate && pnpm --filter @gmp/server start"
     environment:
       PORT: 3000
@@ -43,7 +48,7 @@ services:
       AGENT_URL: http://mock-agent:4002
       JWT_SECRET: change-me-in-production-please-32b
     ports:
-      - "3000:3000"
+      - "${SERVER_HOST_PORT:-3000}:3000"
     depends_on:
       postgres:
         condition: service_healthy

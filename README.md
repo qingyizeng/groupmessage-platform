@@ -29,7 +29,23 @@ pnpm dev:web               # 启动控制台开发服务器，http://localhost:5
 pnpm dev:server            # 启动后端，http://localhost:3000
 ```
 
-也可以用 `docker compose up --build` 一次启动 postgres、模拟网关、模拟 Agent 和后端。
+### 用 Docker 运行
+
+```bash
+docker compose up --build        # postgres + 模拟网关 + 模拟 Agent + 后端（含控制台），访问 http://localhost:3000
+```
+
+- 应用镜像默认基于 `node:latest`（已在 Node 26 上验证），可用 `NODE_IMAGE` 改成其他 Node 镜像（≥ 22）。
+- 国内网络可指定 npm 源：`NPM_REGISTRY=https://registry.npmmirror.com docker compose build`。
+- 宿主机端口可通过 `SERVER_HOST_PORT` / `GATEWAY_HOST_PORT` / `AGENT_HOST_PORT` / `POSTGRES_HOST_PORT` 修改；模拟网关默认真实时延，`MOCK_TIMINGS=fast` 切换为快速模式。
+- 另起一套互不干扰的环境并跑端到端测试：
+
+  ```bash
+  export POSTGRES_HOST_PORT=55433 SERVER_HOST_PORT=3100 GATEWAY_HOST_PORT=4101 AGENT_HOST_PORT=4102
+  docker compose -p gmp-e2e up -d --build
+  E2E_EXTERNAL=1 E2E_BASE_URL=http://localhost:3100 E2E_GATEWAY_URL=http://localhost:4101 pnpm test:e2e
+  docker compose -p gmp-e2e down -v
+  ```
 
 后端在 `apps/web/dist` 存在时会直接托管控制台（`pnpm build:web` 之后访问 http://localhost:3000 即可），前端路由刷新也能正常打开。
 
