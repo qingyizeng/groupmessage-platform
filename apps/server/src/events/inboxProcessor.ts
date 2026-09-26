@@ -1,4 +1,5 @@
 import type { Pool, PoolClient } from '../db/pool';
+import { pgCode } from '../db/tx';
 import type { Logger } from '../lib/logger';
 import { Waker } from '../lib/async';
 import { failpoints } from '../lib/failpoints';
@@ -16,9 +17,13 @@ export type EventHandler = (tx: PoolClient, event: GatewayEvent) => Promise<void
 export type EventHandlers = Partial<Record<string, EventHandler>>;
 
 const MAX_ATTEMPTS = 8;
+const TRANSIENT_SQLSTATES = new Set(['23505', '40001', '40P01']);
 const MAX_BACKOFF_MS = 30_000;
 
 class PermanentEventError extends Error {}
+
+/** The event lacks required fields or has invalid values; retrying cannot help, so it is parked at once. */
+export class MalformedEventError extends PermanentEventError {}
 
 /**
  * Removes NUL characters, which PostgreSQL text/jsonb cannot store. Returns whether anything changed
@@ -107,15 +112,21 @@ export class InboxProcessor {
         await client.query('COMMIT');
         return false;
       }
-      await client.query('SAVEPOINT handle');
-      try {
-        await this.handle(client, row);
-        await client.query(`UPDATE gateway_events SET status = 'done', processed_at = now() WHERE event_id = $1`, [
-          row.event_id,
-        ]);
-      } catch (err) {
-        await client.query('ROLLBACK TO SAVEPOINT handle');
-        await this.recordFailure(client, row, err);
+      for (let attempt = 1; ; attempt++) {
+        await client.query('SAVEPOINT handle');
+        try {
+          await this.handle(client, row);
+          await client.query(`UPDATE gateway_events SET status = 'done', processed_at = now() WHERE event_id = $1`, [
+            row.event_id,
+          ]);
+          break;
+        } catch (err) {
+          await client.query('ROLLBACK TO SAVEPOINT handle');
+          // A concurrent handler touching the same rows committed first; running again sees its result.
+          if (TRANSIENT_SQLSTATES.has(pgCode(err) ?? '') && attempt < 3) continue;
+          await this.recordFailure(client, row, err);
+          break;
+        }
       }
       await client.query('COMMIT');
       return true;

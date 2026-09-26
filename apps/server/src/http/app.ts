@@ -8,6 +8,7 @@ import { registerAuthGuard } from './authGuard';
 import { authRoutes } from './routes/auth';
 import { healthRoutes } from './routes/health';
 import { accountRoutes } from './routes/accounts';
+import { groupRoutes } from './routes/groups';
 import { testHookRoutes } from './routes/testHooks';
 
 declare module 'fastify' {
@@ -39,6 +40,7 @@ export async function buildApp(ctx: AppContext): Promise<FastifyInstance> {
   await app.register(healthRoutes(ctx), { prefix: '/api' });
   await app.register(authRoutes(ctx), { prefix: '/api/auth' });
   await app.register(accountRoutes(ctx), { prefix: '/api/accounts' });
+  await app.register(groupRoutes(ctx), { prefix: '/api/groups' });
   if (ctx.config.ENABLE_TEST_HOOKS) await app.register(testHookRoutes(), { prefix: '/api/_test' });
 
   return app;

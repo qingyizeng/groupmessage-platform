@@ -15,6 +15,7 @@ const envSchema = z.object({
   ACCESS_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().default(15 * 60),
   REFRESH_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().default(7 * 24 * 3600),
   LOG_LEVEL: z.string().default('info'),
+  GATEWAY_SEND_TIMEOUT_MS: z.coerce.number().int().positive().default(8_000),
   ENABLE_TEST_HOOKS: z
     .enum(['true', 'false'])
     .default('false')

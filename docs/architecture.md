@@ -320,7 +320,7 @@ stateDiagram-v2
 | 网关返回 | 消息 | 账号 | 群 |
 |---|---|---|---|
 | 429 | 回到 queued（顺序不变） | → rate_limited，写 until，安排到期任务 | — |
-| 403 ACCOUNT_SUSPENDED / 401 SESSION_EXPIRED | 本条改为 cancelled（ACCOUNT_TERMINAL），由终态后果统一处理 | → 终态（后果见 5.3） | — |
+| 403 ACCOUNT_SUSPENDED / 401 SESSION_EXPIRED | 本条 failed（failCode 为网关错误码）；该账号其余排队中的消息由终态后果统一改为 cancelled（ACCOUNT_TERMINAL） | → 终态（后果见 5.3） | — |
 | 403 GROUP_WRITE_FORBIDDEN / message_failed 同名码 | failed | 不变 | `markGroupUnreachable` |
 | 403 SENDER_NOT_IN_GROUP / 409 ACCOUNT_OFFLINE | failed（同名 failCode） | 不变 | 不变 |
 
@@ -613,6 +613,10 @@ groupmessage-platform/
 | 未知工具 / 入参不合法是否计入连续协议错误 | 计入（它们属于 A5.3 定义的协议错误） |
 | 操作员向 unreachable 的群发消息 | `409 GROUP_UNREACHABLE` |
 | 建群在"网关已建、我方未保存"时崩溃 | 重试 create，可能留下孤儿群（网关没有幂等键，已知限制） |
+| 收到同步 ACCOUNT_SUSPENDED / SESSION_EXPIRED 的那条消息 | 记为 failed 并带网关错误码（它确实被网关拒绝了）；同账号其余排队消息为 cancelled / ACCOUNT_TERMINAL |
+| 缺少必填字段的网关事件 | 视为无法通过重试修复，立即停放为 failed 并推 inconsistency，原始内容保留 |
+| 确认"没发出"之后、重发之前账号被限流 / 离线 / 终态，或群变不可达 | 限流则等到期再重发；离线 → failed/ACCOUNT_OFFLINE；终态 → cancelled/ACCOUNT_TERMINAL；群不可达 → cancelled/GROUP_UNREACHABLE |
+| 服务账号的回流消息始终没有对应的出站记录（例如在本系统之外发出） | 先隐藏，30 秒后作为普通的自己消息显示（deliveryStatus = sent） |
 
 ---
 

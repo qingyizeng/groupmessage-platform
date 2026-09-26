@@ -2,6 +2,8 @@ import { canTransition, isTerminalStatus, type AccountStatus } from '@gmp/shared
 import type { Queryable } from '../../db/pool';
 import { emitWs } from '../../realtime/outbox';
 import { cancelTask, scheduleTask } from '../tasks/scheduledTasks';
+import { removeAccountFromAllGroups } from '../groups/groupRepo';
+import { cancelQueued, OUTBOUND_CHANNEL } from '../messages/outbound';
 
 /**
  * The single place where an account's status changes. Every source (operator, gateway error,
@@ -72,6 +74,7 @@ export async function applyTransition(
   }
 
   await emitWs(tx, 'account_status_changed', { accountId: row.id, from, to, source });
+  if (to === 'online') await tx.query(`NOTIFY ${OUTBOUND_CHANNEL}`);
 
   if (isTerminalStatus(to)) {
     await applyTerminalConsequences(tx, row.id);
@@ -82,6 +85,8 @@ export async function applyTransition(
 /** Everything that must happen, atomically with the status change, when an account becomes terminal. */
 async function applyTerminalConsequences(tx: Queryable, accountId: string): Promise<void> {
   await cancelTask(tx, 'gateway_disconnect', accountId);
+  await removeAccountFromAllGroups(tx, accountId);
+  await cancelQueued(tx, { accountId }, 'ACCOUNT_TERMINAL');
 }
 
 /**

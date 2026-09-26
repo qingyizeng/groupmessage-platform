@@ -8,12 +8,14 @@ import { createEventHandlers } from './events/handlers';
 import { TaskRunner } from './domain/tasks/scheduledTasks';
 import { WsPublisher } from './realtime/publisher';
 import { WsHub } from './realtime/wsHub';
+import { DeliveryService } from './domain/messages/delivery';
 
 export interface WorkerSelection {
   ingest?: boolean;
   inbox?: boolean;
   tasks?: boolean;
   publisher?: boolean;
+  delivery?: boolean;
 }
 
 /**
@@ -27,6 +29,7 @@ export class Runtime {
   readonly tasks: TaskRunner;
   readonly publisher: WsPublisher;
   readonly hub: WsHub;
+  readonly delivery: DeliveryService;
   private abort = new AbortController();
   private running: Promise<unknown>[] = [];
 
@@ -64,6 +67,14 @@ export class Runtime {
       listener: this.listener,
       log: log.child({ component: 'ws-publisher' }),
     });
+    this.delivery = new DeliveryService({
+      pool,
+      gateway: ctx.gateway,
+      listener: this.listener,
+      log: log.child({ component: 'delivery' }),
+      instanceId: config.INSTANCE_ID,
+      sendTimeoutMs: config.GATEWAY_SEND_TIMEOUT_MS,
+    });
     this.hub = new WsHub({ pool, auth: ctx.auth, listener: this.listener, log: log.child({ component: 'ws' }) });
   }
 
@@ -74,7 +85,7 @@ export class Runtime {
   }
 
   async start(opts: { port: number; host?: string; workers?: WorkerSelection } = { port: 0 }): Promise<string> {
-    const w = { ingest: true, inbox: true, tasks: true, publisher: true, ...opts.workers };
+    const w = { ingest: true, inbox: true, tasks: true, publisher: true, delivery: true, ...opts.workers };
     await this.listener.start();
     await this.hub.start(this.app.server);
     const address = await this.app.listen({ port: opts.port, host: opts.host ?? '0.0.0.0' });
@@ -85,6 +96,7 @@ export class Runtime {
     if (w.inbox) this.running.push(guard('inbox', this.inbox.run(signal)));
     if (w.tasks) this.running.push(guard('tasks', this.tasks.run(signal)));
     if (w.publisher) this.running.push(guard('publisher', this.publisher.run(signal)));
+    if (w.delivery) this.running.push(guard('delivery', this.delivery.run(signal)));
     return address;
   }
 

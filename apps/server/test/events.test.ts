@@ -100,17 +100,46 @@ describe('gateway event ingestion', () => {
   });
 
   it('strips NUL characters that PostgreSQL cannot store and reports it', async () => {
-    t.gw.state.emit('message', { groupId: 'g', msgId: 'm', text: 'bad\u0000text' });
+    t.gw.state.emit('message', {
+      groupId: 'g-unmanaged',
+      msgId: 'm',
+      senderPlatformUserId: 'pu_x',
+      sentAt: new Date().toISOString(),
+      text: 'bad\u0000text',
+    });
     await allStored();
     const notices = await outbox('inconsistency');
     expect(notices.some((n) => n.kind === 'event_content_sanitized')).toBe(true);
+  });
+
+  it('parks a malformed event immediately, reports it, and keeps processing others', async () => {
+    t.gw.state.emit('message', { groupId: 'g', text: 'no msgId or sender' });
+    const badId = t.gw.state.events.length;
+    emit(3);
+    await waitFor(async () => {
+      const { rows } = await t.db.pool.query<{ status: string; attempts: number }>(
+        'SELECT status, attempts FROM gateway_events WHERE event_id = $1',
+        [badId],
+      );
+      return rows[0]?.status === 'failed' && rows[0].attempts === 1;
+    }, { message: 'malformed event parked' });
+    const notices = await outbox('inconsistency');
+    expect(notices.some((n) => n.kind === 'event_dead_lettered' && n.ref === `event:${badId}`)).toBe(true);
+    await waitFor(async () => (await counts()).done === t.gw.state.events.length - 1, { message: 'others done' });
+    await t.db.pool.query('DELETE FROM gateway_events WHERE event_id = $1', [badId]);
+    await t.db.pool.query('INSERT INTO gateway_events (event_id, type, raw, status) VALUES ($1, $2, $3, $4)', [
+      badId,
+      'noop',
+      Buffer.from('{}'),
+      'done',
+    ]);
   });
 
   it('only one of two server instances consumes the stream', async () => {
     const before = t.gw.state.subscribers.size;
     expect(before).toBe(1);
     const { Runtime } = await import('../src/runtime');
-    const second = await Runtime.create({ ...t.ctx, log: t.ctx.log });
+    const second = await Runtime.create({ ...t.ctx, config: { ...t.ctx.config, INSTANCE_ID: 'second' } });
     await second.start({ port: 0, host: '127.0.0.1' });
     try {
       emit(10);

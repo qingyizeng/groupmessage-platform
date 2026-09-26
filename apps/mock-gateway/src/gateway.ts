@@ -350,11 +350,17 @@ export function buildMockGateway(opts: MockGatewayOptions = {}): MockGateway {
     state.reset();
   });
 
-  const record = (endpoint: Endpoint, ctx: Omit<CallRecord, 'endpoint' | 'at'>) => {
+  const record = (req: object, endpoint: Endpoint, ctx: Omit<CallRecord, 'endpoint' | 'at'>) => {
     const rec: CallRecord = { endpoint, at: Date.now(), ...ctx };
     state.calls.push(rec);
+    (req as { gmpCall?: CallRecord }).gmpCall = rec;
     return rec;
   };
+
+  app.addHook('onResponse', async (req, reply) => {
+    const rec = (req as { gmpCall?: CallRecord }).gmpCall;
+    if (rec) rec.status = reply.statusCode;
+  });
 
   /**
    * Applies faults that behave the same on every endpoint. Returns the remaining action for
@@ -394,7 +400,7 @@ export function buildMockGateway(opts: MockGatewayOptions = {}): MockGateway {
 
   app.post<{ Params: { accountId: string } }>('/accounts/:accountId/connect', async (req, reply) => {
     const { accountId } = req.params;
-    const rec = record('connect', { accountId });
+    const rec = record(req, 'connect', { accountId });
     const f = await generic(state.takeFault('connect', { accountId }), reply, rec, () => undefined);
     if (f === 'handled') return reply;
     const acc = state.gate(accountId, false);
@@ -405,7 +411,7 @@ export function buildMockGateway(opts: MockGatewayOptions = {}): MockGateway {
 
   app.post<{ Params: { accountId: string } }>('/accounts/:accountId/disconnect', async (req, reply) => {
     const { accountId } = req.params;
-    const rec = record('disconnect', { accountId });
+    const rec = record(req, 'disconnect', { accountId });
     const f = await generic(state.takeFault('disconnect', { accountId }), reply, rec, () => undefined);
     if (f === 'handled') return reply;
     const acc = state.gate(accountId, false);
@@ -418,7 +424,7 @@ export function buildMockGateway(opts: MockGatewayOptions = {}): MockGateway {
 
   app.post<{ Body: { creatorAccountId: string } }>('/groups', async (req, reply) => {
     const { creatorAccountId } = req.body;
-    const rec = record('createGroup', { accountId: creatorAccountId });
+    const rec = record(req, 'createGroup', { accountId: creatorAccountId });
     const f = await generic(state.takeFault('createGroup', { accountId: creatorAccountId }), reply, rec, () => undefined);
     if (f === 'handled') return reply;
     const acc = state.gate(creatorAccountId);
@@ -442,7 +448,7 @@ export function buildMockGateway(opts: MockGatewayOptions = {}): MockGateway {
 
   app.post<{ Params: { groupId: string } }>('/groups/:groupId/invite', async (req, reply) => {
     const { groupId } = req.params;
-    const rec = record('invite', { groupId });
+    const rec = record(req, 'invite', { groupId });
     const f = await generic(state.takeFault('invite', { groupId }), reply, rec, () => undefined);
     if (f === 'handled') return reply;
     const group = state.group(groupId);
@@ -458,7 +464,7 @@ export function buildMockGateway(opts: MockGatewayOptions = {}): MockGateway {
     async (req, reply) => {
       const { groupId } = req.params;
       const { accountId, inviteLink } = req.body;
-      const rec = record('join', { groupId, accountId, body: req.body });
+      const rec = record(req, 'join', { groupId, accountId, body: req.body });
       const group = state.group(groupId);
       const acc = state.account(accountId);
       const doJoin = () => {
@@ -492,7 +498,7 @@ export function buildMockGateway(opts: MockGatewayOptions = {}): MockGateway {
     async (req, reply) => {
       const { groupId } = req.params;
       const { byAccountId, accountId } = req.body;
-      const rec = record('promote', { groupId, accountId: byAccountId, body: req.body });
+      const rec = record(req, 'promote', { groupId, accountId: byAccountId, body: req.body });
       const f = await generic(state.takeFault('promote', { groupId, accountId: byAccountId }), reply, rec, () => undefined);
       if (f === 'handled') return reply;
       const group = state.group(groupId);
@@ -511,7 +517,7 @@ export function buildMockGateway(opts: MockGatewayOptions = {}): MockGateway {
     async (req, reply) => {
       const { groupId } = req.params;
       const { byAccountId, targetPlatformUserId } = req.body;
-      const rec = record('kick', { groupId, accountId: byAccountId, body: req.body });
+      const rec = record(req, 'kick', { groupId, accountId: byAccountId, body: req.body });
       const group = state.group(groupId);
       const doKick = () => {
         state.removeMember(group, targetPlatformUserId);
@@ -538,7 +544,7 @@ export function buildMockGateway(opts: MockGatewayOptions = {}): MockGateway {
   app.post<{ Params: { groupId: string }; Body: { accountId: string } }>('/groups/:groupId/leave', async (req, reply) => {
     const { groupId } = req.params;
     const { accountId } = req.body;
-    const rec = record('leave', { groupId, accountId });
+    const rec = record(req, 'leave', { groupId, accountId });
     const group = state.group(groupId);
     const acc = state.account(accountId);
     const f = await generic(state.takeFault('leave', { groupId, accountId }), reply, rec, () => {
@@ -554,7 +560,7 @@ export function buildMockGateway(opts: MockGatewayOptions = {}): MockGateway {
 
   app.get<{ Params: { groupId: string } }>('/groups/:groupId/members', async (req, reply) => {
     const { groupId } = req.params;
-    const rec = record('members', { groupId });
+    const rec = record(req, 'members', { groupId });
     const f = await generic(state.takeFault('members', { groupId }), reply, rec, () => undefined);
     if (f === 'handled') return reply;
     const group = state.group(groupId);
@@ -569,7 +575,7 @@ export function buildMockGateway(opts: MockGatewayOptions = {}): MockGateway {
     async (req, reply) => {
       const { groupId } = req.params;
       const { accountId, clientMsgId, text } = req.body;
-      const rec = record('send', { groupId, accountId, body: req.body });
+      const rec = record(req, 'send', { groupId, accountId, body: req.body });
       const group = state.group(groupId);
       const acc = state.account(accountId);
       const land = () => state.land(group, acc, clientMsgId, text);
@@ -613,7 +619,7 @@ export function buildMockGateway(opts: MockGatewayOptions = {}): MockGateway {
     '/groups/:groupId/messages/by-client-id/:clientMsgId',
     async (req, reply) => {
       const { groupId, clientMsgId } = req.params;
-      const rec = record('byClientId', { groupId, body: { clientMsgId } });
+      const rec = record(req, 'byClientId', { groupId, body: { clientMsgId } });
       const f = await generic(state.takeFault('byClientId', { groupId }), reply, rec, () => undefined);
       if (f === 'handled') return reply;
       const msg = state.group(groupId).messages.find((m) => m.clientMsgId === clientMsgId);
@@ -624,7 +630,7 @@ export function buildMockGateway(opts: MockGatewayOptions = {}): MockGateway {
   );
 
   app.get<{ Params: { id: string } }>('/media/:id', async (req, reply) => {
-    const rec = record('media', { body: { id: req.params.id } });
+    const rec = record(req, 'media', { body: { id: req.params.id } });
     const f = await generic(state.takeFault('media', {}), reply, rec, () => undefined);
     if (f === 'handled') return reply;
     const media = state.media.get(req.params.id);

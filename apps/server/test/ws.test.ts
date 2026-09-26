@@ -103,7 +103,7 @@ describe('websocket push', () => {
   });
 
   it('delivers the same stream to clients on another instance', async () => {
-    const second = await Runtime.create({ ...t.ctx });
+    const second = await Runtime.create({ ...t.ctx, config: { ...t.ctx.config, INSTANCE_ID: 'second' } });
     const secondUrl = await second.start({ port: 0, host: '127.0.0.1' });
     try {
       const a = await openWs(t.baseUrl, admin);

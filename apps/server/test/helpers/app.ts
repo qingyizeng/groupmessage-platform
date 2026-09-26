@@ -28,6 +28,7 @@ function testConfig(db: TempDb, gatewayUrl = 'http://127.0.0.1:9') {
     JWT_SECRET: 'test-secret-test-secret-test-secret',
     INSTANCE_ID: `test-${process.pid}`,
     ENABLE_TEST_HOOKS: 'true',
+    GATEWAY_SEND_TIMEOUT_MS: '3000',
   });
 }
 

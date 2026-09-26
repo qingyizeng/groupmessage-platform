@@ -4,6 +4,7 @@ import type { Clock } from './lib/clock';
 import type { Logger } from './lib/logger';
 import { AuthService } from './domain/auth/authService';
 import { AccountService } from './domain/accounts/accountService';
+import { MessageService } from './domain/messages/messageService';
 import { GatewayClient } from './integrations/gatewayClient';
 
 export interface CoreDeps {
@@ -18,10 +19,11 @@ export interface AppContext extends CoreDeps {
   auth: AuthService;
   gateway: GatewayClient;
   accounts: AccountService;
+  messages: MessageService;
 }
 
 export function createContext(deps: CoreDeps): AppContext {
-  const gateway = new GatewayClient(deps.config.GATEWAY_URL);
+  const gateway = new GatewayClient(deps.config.GATEWAY_URL, { send: deps.config.GATEWAY_SEND_TIMEOUT_MS });
   return {
     ...deps,
     gateway,
@@ -31,5 +33,6 @@ export function createContext(deps: CoreDeps): AppContext {
       refreshTtlSeconds: deps.config.REFRESH_TOKEN_TTL_SECONDS,
     }),
     accounts: new AccountService({ pool: deps.pool, gateway, log: deps.log }),
+    messages: new MessageService({ pool: deps.pool }),
   };
 }
