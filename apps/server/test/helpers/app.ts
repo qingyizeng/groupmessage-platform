@@ -97,6 +97,7 @@ export async function createTestRuntime(
   await runMigrations(db.pool);
   const gw = buildMockGateway({ timings: FAST_TIMINGS });
   const gwUrl = await gw.app.listen({ port: 0, host: '127.0.0.1' });
+  gw.state.publicUrl = gwUrl;
   const agent = buildMockAgent();
   const agentUrl = await agent.app.listen({ port: 0, host: '127.0.0.1' });
   const config = testConfig(db, gwUrl, agentUrl, opts.env);

@@ -14,6 +14,7 @@ const msg = (id: number, sentAt: string, extra: Partial<MessageDto> = {}): Messa
   deliveryStatus: null,
   failCode: null,
   mediaUrl: null,
+  mediaStatus: null,
   source: null,
   ...extra,
 });

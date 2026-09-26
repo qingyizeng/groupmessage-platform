@@ -4,6 +4,7 @@ import { MalformedEventError } from '../../events/inboxProcessor';
 import { enterTerminal } from '../accounts/transitions';
 import { findGroupByGatewayId, markGroupUnreachable } from '../groups/groupRepo';
 import { emitMessageEvent, lockGatewayMessage, markSent, updateOutbound, type MessageRow } from './outbound';
+import { queueMediaDownload } from '../media/mediaService';
 
 const reqStr = (v: unknown, field: string): string => {
   if (typeof v !== 'string' || v.length === 0) throw new MalformedEventError(`event field ${field} missing`);
@@ -54,6 +55,7 @@ export async function onMessageEvent(tx: Queryable, data: Record<string, unknown
     [group.id, msgId, ownAccount !== null, sender, ownAccount, text, mediaUrl, sentAt, ownAccount ? 'sent' : null],
   );
   const row = rows[0]!;
+  if (mediaUrl) await queueMediaDownload(tx, row.id);
   if (row.echo_pending) return;
   await emitMessageEvent(tx, row);
   for (const hook of inboundHooks) await hook(tx, row);

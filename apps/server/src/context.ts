@@ -1,3 +1,5 @@
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { Config } from './config';
 import type { Pool } from './db/pool';
 import type { Clock } from './lib/clock';
@@ -7,6 +9,7 @@ import { AccountService } from './domain/accounts/accountService';
 import { MessageService } from './domain/messages/messageService';
 import { GroupService } from './domain/groups/groupService';
 import { GatewayClient } from './integrations/gatewayClient';
+import { MediaService } from './domain/media/mediaService';
 import { AgentClient } from './domain/agent/agentClient';
 import { activeAgentRuns, agentSettingsHook, agentTriggerHook, stopAgentForGroup } from './domain/agent/runRepo';
 import { registerInboundMessageHook } from './domain/messages/inbound';
@@ -29,7 +32,10 @@ export interface AppContext extends CoreDeps {
   messages: MessageService;
   groups: GroupService;
   agent: AgentClient;
+  media: MediaService;
 }
+
+const DEFAULT_MEDIA_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../media');
 
 export function createContext(deps: CoreDeps): AppContext {
   const gateway = new GatewayClient(deps.config.GATEWAY_URL, { send: deps.config.GATEWAY_SEND_TIMEOUT_MS });
@@ -53,5 +59,12 @@ export function createContext(deps: CoreDeps): AppContext {
     messages: new MessageService({ pool: deps.pool }),
     groups,
     agent: new AgentClient(deps.config.AGENT_URL),
+    media: new MediaService({
+      pool: deps.pool,
+      log: deps.log.child({ component: 'media' }),
+      mediaDir: deps.config.MEDIA_DIR ?? DEFAULT_MEDIA_DIR,
+      retentionDays: deps.config.MEDIA_RETENTION_DAYS,
+      cleanupIntervalMs: deps.config.MEDIA_CLEANUP_INTERVAL_MS,
+    }),
   };
 }

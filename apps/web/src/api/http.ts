@@ -113,6 +113,16 @@ export class HttpClient {
     return this.request<T>('PATCH', path, body);
   }
 
+  /** Binary GET with the same auth and refresh behaviour as JSON requests. */
+  async blob(path: string): Promise<Blob> {
+    const get = () =>
+      this.doFetch(path, { headers: this.token ? { authorization: `Bearer ${this.token}` } : {}, credentials: 'same-origin' });
+    let res = await get();
+    if (res.status === 401 && (await this.refresh())) res = await get();
+    if (!res.ok) throw new ApiError(res.status, `HTTP_${res.status}`, res.statusText);
+    return res.blob();
+  }
+
   async request<T>(method: string, path: string, body?: unknown): Promise<T> {
     const sentWith = this.token;
     try {

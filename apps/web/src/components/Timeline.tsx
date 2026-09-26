@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
-import { Button, Empty, Space, Tag, Tooltip, Typography } from 'antd';
+import { App, Button, Empty, Space, Tag, Tooltip, Typography } from 'antd';
 import type { MessageDto } from '@gmp/shared';
-import { api } from '../api/client';
+import { api, http } from '../api/client';
 import { useRealtime } from '../realtime/RealtimeProvider';
 import { addPage, applyLive, emptyTimeline, ordered, type TimelineState } from '../lib/timeline';
 import { DELIVERY_COLOR, errorText, fmtTime } from '../lib/format';
@@ -96,6 +96,39 @@ export function Timeline({ groupId }: { groupId: string }) {
   );
 }
 
+const MEDIA_LABEL: Record<string, { color: string; text: string }> = {
+  pending: { color: 'processing', text: '附件下载中' },
+  downloaded: { color: 'green', text: '附件' },
+  expired: { color: 'default', text: '附件已过期' },
+  failed: { color: 'red', text: '附件下载失败' },
+  deleted: { color: 'default', text: '附件已清理' },
+};
+
+function MediaBadge({ m }: { m: MessageDto }) {
+  const { message } = App.useApp();
+  const label = MEDIA_LABEL[m.mediaStatus ?? 'pending']!;
+  const open = async () => {
+    try {
+      const blob = await http.blob(`/api/messages/${m.id}/media`);
+      window.open(URL.createObjectURL(blob), '_blank', 'noopener');
+    } catch (err) {
+      message.error(errorText(err));
+    }
+  };
+  return (
+    <div style={{ marginTop: 4 }}>
+      <Tag color={label.color} data-testid="media-status">
+        {label.text}
+      </Tag>
+      {m.mediaStatus === 'downloaded' && (
+        <Button size="small" type="link" onClick={() => void open()}>
+          查看
+        </Button>
+      )}
+    </div>
+  );
+}
+
 function MessageRow({ m }: { m: MessageDto }) {
   return (
     <div
@@ -126,6 +159,7 @@ function MessageRow({ m }: { m: MessageDto }) {
           {m.source === 'sequence' && <Tag color="cyan">序列</Tag>}
         </Space>
         <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{m.text}</div>
+        {m.mediaUrl && <MediaBadge m={m} />}
       </div>
     </div>
   );

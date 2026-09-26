@@ -21,6 +21,7 @@ export interface MessageRow {
   text: string;
   media_url: string | null;
   local_file_path: string | null;
+  media_status: 'pending' | 'downloaded' | 'expired' | 'failed' | 'deleted' | null;
   created_at: Date;
   sent_at: Date | null;
   sort_ts: Date;
@@ -52,6 +53,8 @@ export interface MessageDto {
   deliveryStatus: DeliveryStatus | null;
   failCode: string | null;
   mediaUrl: string | null;
+  /** Local copy of the media (C1): pending | downloaded | expired | failed | deleted, or null without media. */
+  mediaStatus: MessageRow['media_status'];
   source: string | null;
 }
 
@@ -68,6 +71,7 @@ export function toMessageDto(r: MessageRow): MessageDto {
     deliveryStatus: r.is_own ? (r.delivery_status ?? 'sent') : null,
     failCode: r.fail_code,
     mediaUrl: r.media_url,
+    mediaStatus: r.media_status,
     source: r.source,
   };
 }

@@ -12,6 +12,10 @@ const envSchema = z.object({
     .default('false')
     .transform((v) => v === 'true'),
   INSTANCE_ID: z.string().optional(),
+  /** Where downloaded media is stored (defaults to <repo>/media). */
+  MEDIA_DIR: z.string().optional(),
+  MEDIA_RETENTION_DAYS: z.coerce.number().positive().default(30),
+  MEDIA_CLEANUP_INTERVAL_MS: z.coerce.number().int().positive().default(60 * 60 * 1000),
   /** Built console to serve (defaults to apps/web/dist when it exists). */
   WEB_DIST: z.string().optional(),
   ACCESS_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().default(15 * 60),

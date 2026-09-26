@@ -44,6 +44,7 @@ export interface MessageDto {
   deliveryStatus: DeliveryStatus | null;
   failCode: string | null;
   mediaUrl: string | null;
+  mediaStatus: 'pending' | 'downloaded' | 'expired' | 'failed' | 'deleted' | null;
   source: string | null;
 }
 

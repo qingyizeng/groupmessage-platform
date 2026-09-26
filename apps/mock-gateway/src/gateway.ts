@@ -180,7 +180,8 @@ export class MockGatewayState {
 
   constructor(
     timings: Timings,
-    readonly publicUrl: string,
+    /** Base URL for invite links and media URLs; set after listen when the port is dynamic. */
+    public publicUrl: string,
     readonly eventIdBase = 0,
   ) {
     this.timings = timings;

@@ -5,7 +5,7 @@ import type { PgListener } from '../../infra/pgListener';
 
 export const TASKS_CHANNEL = 'scheduled_tasks';
 
-export type TaskKind = 'rate_limit_expiry' | 'gateway_disconnect' | 'sequence_step';
+export type TaskKind = 'rate_limit_expiry' | 'gateway_disconnect' | 'sequence_step' | 'media_download' | 'media_cleanup';
 
 export interface Task {
   id: number;

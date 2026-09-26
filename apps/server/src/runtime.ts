@@ -70,6 +70,8 @@ export class Runtime {
         gateway_disconnect: ctx.accounts.handleDisconnectTask,
         rate_limit_expiry: ctx.accounts.handleRateLimitExpiry,
         sequence_step: (task) => runDueStep(pool, task),
+        media_download: ctx.media.handleDownloadTask,
+        media_cleanup: ctx.media.handleCleanupTask,
       },
     });
     this.publisher = new WsPublisher({
@@ -125,6 +127,7 @@ export class Runtime {
   async start(opts: { port: number; host?: string; workers?: WorkerSelection } = { port: 0 }): Promise<string> {
     const w = { ingest: true, inbox: true, tasks: true, publisher: true, delivery: true, jobs: true, agent: true, ...opts.workers };
     await this.listener.start();
+    await this.ctx.media.ensureCleanupScheduled();
     await this.hub.start(this.app.server);
     const address = await this.app.listen({ port: opts.port, host: opts.host ?? '0.0.0.0' });
     const signal = this.abort.signal;
