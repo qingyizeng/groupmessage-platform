@@ -38,6 +38,19 @@ services:
     ports:
       - "${AGENT_HOST_PORT:-4002}:4002"
 
+  # C2: Claude-backed agent. Start with SERVER_AGENT_URL=http://llm-agent:4003 docker compose --profile llm up.
+  llm-agent:
+    image: gmp-app:latest
+    profiles: ["llm"]
+    command: pnpm --filter @gmp/llm-agent start
+    environment:
+      PORT: 4003
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-claude-opus-5}
+      LLM_EFFORT: ${LLM_EFFORT:-low}
+    ports:
+      - "${LLM_AGENT_HOST_PORT:-4003}:4003"
+
   server:
     image: gmp-app:latest
     command: sh -c "pnpm --filter @gmp/server migrate && pnpm --filter @gmp/server start"
@@ -45,7 +58,8 @@ services:
       PORT: 3000
       DATABASE_URL: postgres://gmp:gmp@postgres:5432/gmp
       GATEWAY_URL: http://mock-gateway:4001
-      AGENT_URL: http://mock-agent:4002
+      # Not ${AGENT_URL}: compose substitutes from the repo .env, whose AGENT_URL is for local dev.
+      AGENT_URL: ${SERVER_AGENT_URL:-http://mock-agent:4002}
       JWT_SECRET: change-me-in-production-please-32b
     ports:
       - "${SERVER_HOST_PORT:-3000}:3000"
