@@ -24,7 +24,7 @@ function body(requestId: string, code: string, message: string, extra: Record<st
   return { error: { ...extra, code, message, requestId } };
 }
 
-export function registerErrorHandling(app: FastifyInstance): void {
+export function registerErrorHandling(app: FastifyInstance, opts: { spaFallback?: boolean } = {}): void {
   app.setErrorHandler((err: FastifyError | AppError | ZodError | Error, req, reply) => {
     if (err instanceof AppError) {
       return reply.status(err.statusCode).send(body(req.id, err.code, err.message, err.extra));
@@ -44,6 +44,10 @@ export function registerErrorHandling(app: FastifyInstance): void {
   });
 
   app.setNotFoundHandler((req, reply) => {
+    // Client-side routes of the console (e.g. /groups/:id) are served the SPA entry point.
+    if (opts.spaFallback && req.method === 'GET' && !req.url.startsWith('/api/') && req.url !== '/ws') {
+      return reply.type('text/html').sendFile('index.html');
+    }
     reply.status(404).send(body(req.id, ErrorCode.NOT_FOUND, `Route ${req.method} ${req.url} not found`));
   });
 }

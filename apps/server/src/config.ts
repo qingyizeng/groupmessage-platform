@@ -12,6 +12,8 @@ const envSchema = z.object({
     .default('false')
     .transform((v) => v === 'true'),
   INSTANCE_ID: z.string().optional(),
+  /** Built console to serve (defaults to apps/web/dist when it exists). */
+  WEB_DIST: z.string().optional(),
   ACCESS_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().default(15 * 60),
   REFRESH_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().default(7 * 24 * 3600),
   LOG_LEVEL: z.string().default('info'),

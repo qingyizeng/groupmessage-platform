@@ -1,0 +1,6 @@
+body {
+  margin: 0;
+}
+.row-blocked td {
+  background: #fff1f0 !important;
+}

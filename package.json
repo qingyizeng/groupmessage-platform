@@ -18,6 +18,9 @@
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
     "dev:agent": "pnpm --filter @gmp/mock-agent dev",
-    "dev:gateway": "MOCK_TIMINGS=${MOCK_TIMINGS:-fast} pnpm --filter @gmp/mock-gateway dev"
+    "dev:gateway": "MOCK_TIMINGS=${MOCK_TIMINGS:-fast} pnpm --filter @gmp/mock-gateway dev",
+    "dev:web": "pnpm --filter @gmp/web dev",
+    "build:web": "pnpm --filter @gmp/web build",
+    "test:e2e": "pnpm --filter @gmp/e2e test:e2e"
   }
 }

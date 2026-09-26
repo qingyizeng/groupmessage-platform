@@ -1,4 +1,8 @@
 import { randomUUID } from 'node:crypto';
+import { existsSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyBaseLogger, type FastifyInstance } from 'fastify';
 import cookie from '@fastify/cookie';
 import type { AppContext } from '../context';
@@ -21,6 +25,8 @@ declare module 'fastify' {
 
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9._-]{1,128}$/;
 
+const DEFAULT_WEB_DIST = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../web/dist');
+
 export async function buildApp(ctx: AppContext): Promise<FastifyInstance> {
   const app = Fastify({
     loggerInstance: ctx.log as FastifyBaseLogger,
@@ -36,7 +42,10 @@ export async function buildApp(ctx: AppContext): Promise<FastifyInstance> {
   });
 
   await app.register(cookie);
-  registerErrorHandling(app);
+  const webDist = ctx.config.WEB_DIST ?? DEFAULT_WEB_DIST;
+  const serveWeb = existsSync(path.join(webDist, 'index.html'));
+  if (serveWeb) await app.register(fastifyStatic, { root: webDist, wildcard: false });
+  registerErrorHandling(app, { spaFallback: serveWeb });
   registerAuthGuard(app, ctx.auth);
 
   await app.register(healthRoutes(ctx), { prefix: '/api' });

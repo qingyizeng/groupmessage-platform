@@ -9,6 +9,8 @@
 | `apps/server` | 后端服务（Fastify + pg + ws） |
 | `apps/mock-gateway` | 模拟消息网关（HTTP + SSE），带故障注入的 `/_control` 接口 |
 | `apps/mock-agent` | 模拟 Agent 服务：默认是一个规则 agent，也可以按剧本逐轮返回任意响应 |
+| `apps/web` | 控制台前端（Vite + React 18 + TanStack Query + antd） |
+| `e2e` | Playwright 端到端测试 |
 | `packages/shared` | 前后端共享的类型、账号状态转移表、错误码、WS 事件类型 |
 | `docs/` | 架构设计 |
 
@@ -23,10 +25,13 @@ pnpm db:up                 # 启动 PostgreSQL（宿主机端口 55432）
 pnpm migrate               # 执行数据库迁移（可重复执行）
 pnpm dev:gateway           # 启动模拟网关，http://localhost:4001
 pnpm dev:agent             # 启动模拟 Agent 服务，http://localhost:4002
+pnpm dev:web               # 启动控制台开发服务器，http://localhost:5173（/api 与 /ws 代理到后端）
 pnpm dev:server            # 启动后端，http://localhost:3000
 ```
 
 也可以用 `docker compose up --build` 一次启动 postgres、模拟网关、模拟 Agent 和后端。
+
+后端在 `apps/web/dist` 存在时会直接托管控制台（`pnpm build:web` 之后访问 http://localhost:3000 即可），前端路由刷新也能正常打开。
 
 预置数据：用户 `admin/admin`（全部权限）、`viewer/viewer`（只读）；服务账号 `acc_01` … `acc_08`（初始 `idle`）。
 
@@ -66,6 +71,13 @@ pnpm dev:server            # 启动后端，http://localhost:3000
 ```bash
 pnpm db:up
 pnpm test           # 每个测试文件使用独立的临时数据库和进程内的模拟网关
+```
+
+端到端测试会自己起一套隔离环境（数据库 `gmp_e2e`，端口 3100 / 4101 / 4102），使用本机安装的 Google Chrome（无需下载浏览器；其他浏览器可设 `E2E_CHANNEL`）：
+
+```bash
+pnpm db:up
+pnpm test:e2e
 ```
 
 设置 `ENABLE_TEST_HOOKS=true` 时，后端会暴露 `POST /api/_test/failpoints`（仅 admin），可以在演示时注入数据库写入失败等故障。
