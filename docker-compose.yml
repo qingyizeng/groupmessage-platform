@@ -1,0 +1,34 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: gmp
+      POSTGRES_PASSWORD: gmp
+      POSTGRES_DB: gmp
+    ports:
+      - "55432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gmp -d gmp"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  server:
+    build: .
+    command: sh -c "pnpm --filter @gmp/server migrate && pnpm --filter @gmp/server start"
+    environment:
+      PORT: 3000
+      DATABASE_URL: postgres://gmp:gmp@postgres:5432/gmp
+      GATEWAY_URL: http://mock-gateway:4001
+      AGENT_URL: http://mock-agent:4002
+      JWT_SECRET: change-me-in-production-please-32b
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pgdata:

@@ -1,0 +1,12 @@
+node_modules/
+dist/
+coverage/
+.env
+*.log
+.DS_Store
+media/
+test-results/
+playwright-report/
+
+# 笔试题原文不随公开仓库发布
+全栈开发工程师笔试题-*.md

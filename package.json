@@ -1,0 +1,19 @@
+{
+  "name": "groupmessage-platform",
+  "private": true,
+  "packageManager": "pnpm@10.30.2",
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild"]
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "db:up": "docker compose up -d postgres",
+    "db:down": "docker compose down",
+    "migrate": "pnpm --filter @gmp/server migrate",
+    "dev:server": "pnpm --filter @gmp/server dev",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test"
+  }
+}
