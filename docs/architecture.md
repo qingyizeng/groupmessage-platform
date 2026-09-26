@@ -480,6 +480,17 @@ flowchart LR
 
 ---
 
+### 5.10 媒体文件（C1）
+
+- 带 `mediaUrl` 的 `message` 在事件事务里标记 `media_status = pending` 并写入一个 `media_download` 持久化任务；下载失败按退避重试，网关返回 404（已过期）记为 `expired`，重试 5 次仍失败记为 `failed`。
+- **下载：先文件后记录。** 写临时文件、原子改名，再在事务里写 `local_file_path`；崩溃最多留下一个无人引用的文件。
+- **删除：先记录后文件。** 事务里清空 `local_file_path` 并标记 `deleted`，提交后再删文件；任何时刻都不会有指向已删文件的记录。
+- 清理任务按 `MEDIA_CLEANUP_INTERVAL_MS` 自我重排：删除超过 `MEDIA_RETENTION_DAYS` 的文件（群里有运行中 agent run 时跳过该群），并清掉无人引用且超过 1 小时的孤儿文件。
+
+### 5.11 真实 LLM（C2）
+
+`apps/llm-agent` 对外与模拟 Agent 完全相同。内部：`tool_choice: auto` + `disable_parallel_tool_use` 保证至多一个工具调用，再把响应规范化为恰好一个块；按 tool_use id 缓存完整 assistant 内容（含 thinking 块），下一轮原样放回；审计用 JSON Schema 结构化输出；开启服务端拒答回退 `fallbacks: "default"`。
+
 ## 6. 后台 worker 一览
 
 | Worker | 领取方式 | 单例 | 频率 / 唤醒 |
@@ -641,6 +652,10 @@ groupmessage-platform/
 | 步骤消息发送失败（非群不可写） | 步骤 failed，运行 failed；群不可写时运行 stopped |
 | 向不可达或已退出的群启动序列 | 409 GROUP_UNREACHABLE / GROUP_LEFT |
 | 重启规则的实现 | 同一时刻只有当前步有排期；执行时若已比计划晚超过 2 秒，视为停机期间错过，改排到"当前时刻 + 该步 delaySeconds" |
+| 媒体"仍被运行中的 agent run 用到" | 按群判断：群里有 running 的 run 时本轮不删该群的文件 |
+| 媒体下载的对象 | 所有带 mediaUrl 的 message（包括回流的自己消息）；文件按 `<MEDIA_DIR>/<群 id>/<消息行 id>-<随机>.<扩展名>` 存放 |
+| C2 的推理强度 | 默认 `low`：平台每轮只给 10–15 秒，聊天类路由在低强度下质量足够；`LLM_EFFORT` 可调 |
+| C2 被安全分类器拒绝 | 开启服务端回退后仍被拒时，turn 返回 end_turn 文本说明，run 以 final 结束；审计被拒记为 fail |
 
 ---
 
