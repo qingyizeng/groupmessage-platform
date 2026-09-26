@@ -3,7 +3,9 @@
   "private": true,
   "packageManager": "pnpm@10.30.2",
   "pnpm": {
-    "onlyBuiltDependencies": ["esbuild"]
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
   },
   "engines": {
     "node": ">=22"
@@ -14,6 +16,7 @@
     "migrate": "pnpm --filter @gmp/server migrate",
     "dev:server": "pnpm --filter @gmp/server dev",
     "typecheck": "pnpm -r typecheck",
-    "test": "pnpm -r test"
+    "test": "pnpm -r test",
+    "dev:gateway": "MOCK_TIMINGS=${MOCK_TIMINGS:-fast} pnpm --filter @gmp/mock-gateway dev"
   }
 }

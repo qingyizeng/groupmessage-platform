@@ -1,7 +1,7 @@
 import type { FastifyPluginAsync, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import type { LoginResponse } from '@gmp/shared';
-import type { AppContext } from '../app';
+import type { AppContext } from '../../context';
 import type { IssuedTokens } from '../../domain/auth/authService';
 
 export const REFRESH_COOKIE = 'rt';

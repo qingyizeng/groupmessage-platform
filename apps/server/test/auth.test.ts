@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { expectedSchemaVersion } from '../src/db/migrate';
 import { createTestApp, login, type TestApp } from './helpers/app';
 
 describe('auth, sessions and RBAC', () => {
@@ -16,7 +17,7 @@ describe('auth, sessions and RBAC', () => {
   it('health is public and reports the schema version', async () => {
     const res = await get('/api/health');
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ ok: true, schemaVersion: 1 });
+    expect(res.json()).toEqual({ ok: true, schemaVersion: expectedSchemaVersion() });
   });
 
   it('errors use the uniform envelope with a requestId', async () => {

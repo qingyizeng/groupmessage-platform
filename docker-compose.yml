@@ -15,6 +15,16 @@ services:
       timeout: 3s
       retries: 30
 
+  mock-gateway:
+    build: .
+    command: pnpm --filter @gmp/mock-gateway start
+    environment:
+      PORT: 4001
+      PUBLIC_URL: http://mock-gateway:4001
+      MOCK_TIMINGS: ${MOCK_TIMINGS:-realistic}
+    ports:
+      - "4001:4001"
+
   server:
     build: .
     command: sh -c "pnpm --filter @gmp/server migrate && pnpm --filter @gmp/server start"
@@ -29,6 +39,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      mock-gateway:
+        condition: service_started
 
 volumes:
   pgdata:

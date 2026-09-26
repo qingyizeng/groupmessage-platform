@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify';
 import type { HealthResponse } from '@gmp/shared';
-import type { AppContext } from '../app';
+import type { AppContext } from '../../context';
 
 export const healthRoutes =
   (ctx: AppContext): FastifyPluginAsync =>
