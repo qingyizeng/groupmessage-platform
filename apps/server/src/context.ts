@@ -5,6 +5,7 @@ import type { Logger } from './lib/logger';
 import { AuthService } from './domain/auth/authService';
 import { AccountService } from './domain/accounts/accountService';
 import { MessageService } from './domain/messages/messageService';
+import { GroupService } from './domain/groups/groupService';
 import { GatewayClient } from './integrations/gatewayClient';
 
 export interface CoreDeps {
@@ -20,6 +21,7 @@ export interface AppContext extends CoreDeps {
   gateway: GatewayClient;
   accounts: AccountService;
   messages: MessageService;
+  groups: GroupService;
 }
 
 export function createContext(deps: CoreDeps): AppContext {
@@ -34,5 +36,6 @@ export function createContext(deps: CoreDeps): AppContext {
     }),
     accounts: new AccountService({ pool: deps.pool, gateway, log: deps.log }),
     messages: new MessageService({ pool: deps.pool }),
+    groups: new GroupService({ pool: deps.pool }),
   };
 }

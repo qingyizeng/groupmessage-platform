@@ -69,6 +69,8 @@ export type FaultAction =
   | { type: 'fail_after_accept'; code: 'GROUP_WRITE_FORBIDDEN' | 'ACCOUNT_SUSPENDED' }
   /** join: 202 but the account never joins. */
   | { type: 'never_join' }
+  /** join: the account is (silently, without an event) already a member, so the gateway answers 409 ALREADY_MEMBER. */
+  | { type: 'already_member' }
   /** send: start a rate-limit window for the account and respond 429. */
   | { type: 'rate_limit'; retryAfterSeconds: number };
 
@@ -132,6 +134,11 @@ export interface MockGatewayOptions {
   timings?: Timings;
   publicUrl?: string;
   logger?: boolean;
+  /**
+   * First event id is eventIdBase + 1. A real gateway never reuses ids; a standalone mock starts from a
+   * time-based base so that restarting it does not replay ids a server has already stored.
+   */
+  eventIdBase?: number;
 }
 
 export interface MockGateway {
@@ -174,6 +181,7 @@ export class MockGatewayState {
   constructor(
     timings: Timings,
     readonly publicUrl: string,
+    readonly eventIdBase = 0,
   ) {
     this.timings = timings;
   }
@@ -249,7 +257,7 @@ export class MockGatewayState {
   }
 
   emit(type: string, data: Record<string, unknown>) {
-    const eventId = this.events.length + 1;
+    const eventId = this.eventIdBase + this.events.length + 1;
     const evt: GatewayEvent = { eventId, type, data: { ...data, eventId, type } };
     this.events.push(evt);
     for (const sub of this.subscribers) {
@@ -338,7 +346,11 @@ function writeFrame(res: ServerResponse, evt: GatewayEvent) {
 }
 
 export function buildMockGateway(opts: MockGatewayOptions = {}): MockGateway {
-  const state = new MockGatewayState(opts.timings ?? REALISTIC_TIMINGS, opts.publicUrl ?? 'http://localhost:4001');
+  const state = new MockGatewayState(
+    opts.timings ?? REALISTIC_TIMINGS,
+    opts.publicUrl ?? 'http://localhost:4001',
+    opts.eventIdBase ?? 0,
+  );
   const app = Fastify({ logger: opts.logger ?? false });
 
   app.setErrorHandler((err: Error, _req, reply) => {
@@ -479,6 +491,7 @@ export function buildMockGateway(opts: MockGatewayOptions = {}): MockGateway {
       const f = await generic(state.takeFault('join', { groupId, accountId }), reply, rec, doJoin);
       if (f === 'handled') return reply;
       state.gate(accountId);
+      if (f?.type === 'already_member') group.members.add(acc.platformUserId);
       const invite = group.invites.get(inviteLink);
       if (!invite || invite.expired) throw new HttpFail(410, 'INVITE_EXPIRED');
       if (Date.now() < invite.readyAt) throw new HttpFail(409, 'INVITE_NOT_READY');
@@ -793,7 +806,7 @@ export function buildMockGateway(opts: MockGatewayOptions = {}): MockGateway {
   /** Emits an arbitrary raw event (e.g. to test handling of malformed payloads). */
   app.post<{ Body: { type: string; data: Record<string, unknown> } }>('/_control/events/emit', async (req) => {
     state.emit(req.body.type, req.body.data);
-    return { eventId: state.events.length };
+    return { eventId: state.eventIdBase + state.events.length };
   });
 
   return { app, state };

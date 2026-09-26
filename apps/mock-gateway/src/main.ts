@@ -5,6 +5,7 @@ const gateway = buildMockGateway({
   timings: process.env.MOCK_TIMINGS === 'fast' ? FAST_TIMINGS : REALISTIC_TIMINGS,
   publicUrl: process.env.PUBLIC_URL ?? `http://localhost:${port}`,
   logger: true,
+  eventIdBase: Date.now() * 1000,
 });
 
 await gateway.app.listen({ port, host: '0.0.0.0' });

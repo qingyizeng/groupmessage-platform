@@ -617,6 +617,12 @@ groupmessage-platform/
 | 缺少必填字段的网关事件 | 视为无法通过重试修复，立即停放为 failed 并推 inconsistency，原始内容保留 |
 | 确认"没发出"之后、重发之前账号被限流 / 离线 / 终态，或群变不可达 | 限流则等到期再重发；离线 → failed/ACCOUNT_OFFLINE；终态 → cancelled/ACCOUNT_TERMINAL；群不可达 → cancelled/GROUP_UNREACHABLE |
 | 服务账号的回流消息始终没有对应的出站记录（例如在本系统之外发出） | 先隐藏，30 秒后作为普通的自己消息显示（deliveryStatus = sent） |
+| 建群时成员账号是 `rate_limited` | 不算 online，返回 422 ACCOUNT_NOT_ONLINE（题目要求"所有账号必须 online"） |
+| 建群 join 返回 ALREADY_MEMBER | 视为已入群；因为不会再有 member_joined，由任务直接写入成员行（state_event_id = 0，任何真实事件都能覆盖它） |
+| 建群 join 返回 504（结果未知） | 按 202 处理，继续等待 member_joined，超时则 JOIN_TIMEOUT |
+| promote 返回 504 / 503 | 与 NOT_MEMBER_YET 一样在总次数 ≤ 2 的前提下重试 |
+| leave-all 时某个账号离线 | 网关返回 ACCOUNT_OFFLINE，记为该账号的退群失败，群主不退 |
+| 对已经 `left` 的群再次 leave-all | 409 GROUP_LEFT；同一个群已有进行中的 leave-all 时返回该任务的 jobId |
 
 ---
 

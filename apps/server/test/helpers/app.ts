@@ -29,6 +29,7 @@ function testConfig(db: TempDb, gatewayUrl = 'http://127.0.0.1:9') {
     INSTANCE_ID: `test-${process.pid}`,
     ENABLE_TEST_HOOKS: 'true',
     GATEWAY_SEND_TIMEOUT_MS: '3000',
+    JOIN_TIMEOUT_MS: '1500',
   });
 }
 
