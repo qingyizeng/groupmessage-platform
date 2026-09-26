@@ -17,6 +17,7 @@
     "dev:server": "pnpm --filter @gmp/server dev",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
+    "dev:agent": "pnpm --filter @gmp/mock-agent dev",
     "dev:gateway": "MOCK_TIMINGS=${MOCK_TIMINGS:-fast} pnpm --filter @gmp/mock-gateway dev"
   }
 }

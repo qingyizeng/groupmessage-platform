@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { buildMockGateway, FAST_TIMINGS, type MockGateway } from '@gmp/mock-gateway';
+import { buildMockAgent, type MockAgent } from '@gmp/mock-agent';
 import { loadConfig } from '../../src/config';
 import { createContext, type AppContext } from '../../src/context';
 import { expectedSchemaVersion, runMigrations } from '../../src/db/migrate';
@@ -21,15 +22,19 @@ export class ManualClock implements Clock {
 
 const testLogger = () => createLogger(process.env.TEST_LOG_LEVEL ?? 'silent');
 
-function testConfig(db: TempDb, gatewayUrl = 'http://127.0.0.1:9') {
+function testConfig(db: TempDb, gatewayUrl = 'http://127.0.0.1:9', agentUrl = 'http://127.0.0.1:9', env: Record<string, string> = {}) {
   return loadConfig({
     DATABASE_URL: db.url,
     GATEWAY_URL: gatewayUrl,
+    AGENT_URL: agentUrl,
+    AGENT_TURN_TIMEOUT_MS: '1500',
+    AGENT_AUDIT_TIMEOUT_MS: '500',
     JWT_SECRET: 'test-secret-test-secret-test-secret',
     INSTANCE_ID: `test-${process.pid}`,
     ENABLE_TEST_HOOKS: 'true',
     GATEWAY_SEND_TIMEOUT_MS: '3000',
     JOIN_TIMEOUT_MS: '1500',
+    ...env,
   });
 }
 
@@ -74,6 +79,8 @@ export interface TestRuntime {
   db: TempDb;
   gw: MockGateway;
   gwUrl: string;
+  agent: MockAgent;
+  agentUrl: string;
   baseUrl: string;
   /** Stops the server process (simulating a crash/restart) without touching DB or gateway. */
   restart(workers?: WorkerSelection): Promise<void>;
@@ -83,12 +90,16 @@ export interface TestRuntime {
 }
 
 /** Full server runtime with all workers, a fresh database and an in-process mock gateway. */
-export async function createTestRuntime(opts: { workers?: WorkerSelection } = {}): Promise<TestRuntime> {
+export async function createTestRuntime(
+  opts: { workers?: WorkerSelection; env?: Record<string, string> } = {},
+): Promise<TestRuntime> {
   const db = await createTempDb();
   await runMigrations(db.pool);
   const gw = buildMockGateway({ timings: FAST_TIMINGS });
   const gwUrl = await gw.app.listen({ port: 0, host: '127.0.0.1' });
-  const config = testConfig(db, gwUrl);
+  const agent = buildMockAgent();
+  const agentUrl = await agent.app.listen({ port: 0, host: '127.0.0.1' });
+  const config = testConfig(db, gwUrl, agentUrl, opts.env);
 
   let runtime: Runtime | null = null;
   let baseUrl = '';
@@ -105,6 +116,8 @@ export async function createTestRuntime(opts: { workers?: WorkerSelection } = {}
     db,
     gw,
     gwUrl,
+    agent,
+    agentUrl,
     get baseUrl() {
       return baseUrl;
     },
@@ -129,6 +142,7 @@ export async function createTestRuntime(opts: { workers?: WorkerSelection } = {}
     async close() {
       await t.stopServer();
       await gw.app.close();
+      await agent.app.close();
       await db.drop();
     },
   };

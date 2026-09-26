@@ -7,6 +7,10 @@ import { AccountService } from './domain/accounts/accountService';
 import { MessageService } from './domain/messages/messageService';
 import { GroupService } from './domain/groups/groupService';
 import { GatewayClient } from './integrations/gatewayClient';
+import { AgentClient } from './domain/agent/agentClient';
+import { activeAgentRuns, agentSettingsHook, agentTriggerHook, stopAgentForGroup } from './domain/agent/runRepo';
+import { registerInboundMessageHook } from './domain/messages/inbound';
+import { registerGroupUnreachableHook } from './domain/groups/groupRepo';
 
 export interface CoreDeps {
   config: Config;
@@ -22,10 +26,17 @@ export interface AppContext extends CoreDeps {
   accounts: AccountService;
   messages: MessageService;
   groups: GroupService;
+  agent: AgentClient;
 }
 
 export function createContext(deps: CoreDeps): AppContext {
   const gateway = new GatewayClient(deps.config.GATEWAY_URL, { send: deps.config.GATEWAY_SEND_TIMEOUT_MS });
+  // Module-level functions, so registering again (another runtime in the same process) is a no-op.
+  registerInboundMessageHook(agentTriggerHook);
+  registerGroupUnreachableHook(stopAgentForGroup);
+  const groups = new GroupService({ pool: deps.pool });
+  groups.onSettingsChanged(agentSettingsHook);
+  groups.setActiveRunResolvers({ agent: activeAgentRuns });
   return {
     ...deps,
     gateway,
@@ -36,6 +47,7 @@ export function createContext(deps: CoreDeps): AppContext {
     }),
     accounts: new AccountService({ pool: deps.pool, gateway, log: deps.log }),
     messages: new MessageService({ pool: deps.pool }),
-    groups: new GroupService({ pool: deps.pool }),
+    groups,
+    agent: new AgentClient(deps.config.AGENT_URL),
   };
 }

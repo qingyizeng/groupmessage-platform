@@ -8,6 +8,7 @@
 |---|---|
 | `apps/server` | 后端服务（Fastify + pg + ws） |
 | `apps/mock-gateway` | 模拟消息网关（HTTP + SSE），带故障注入的 `/_control` 接口 |
+| `apps/mock-agent` | 模拟 Agent 服务：默认是一个规则 agent，也可以按剧本逐轮返回任意响应 |
 | `packages/shared` | 前后端共享的类型、账号状态转移表、错误码、WS 事件类型 |
 | `docs/` | 架构设计 |
 
@@ -21,10 +22,11 @@ cp .env.example .env
 pnpm db:up                 # 启动 PostgreSQL（宿主机端口 55432）
 pnpm migrate               # 执行数据库迁移（可重复执行）
 pnpm dev:gateway           # 启动模拟网关，http://localhost:4001
+pnpm dev:agent             # 启动模拟 Agent 服务，http://localhost:4002
 pnpm dev:server            # 启动后端，http://localhost:3000
 ```
 
-也可以用 `docker compose up --build` 一次启动 postgres、模拟网关和后端。
+也可以用 `docker compose up --build` 一次启动 postgres、模拟网关、模拟 Agent 和后端。
 
 预置数据：用户 `admin/admin`（全部权限）、`viewer/viewer`（只读）；服务账号 `acc_01` … `acc_08`（初始 `idle`）。
 
@@ -43,6 +45,21 @@ pnpm dev:server            # 启动后端，http://localhost:3000
   ```
 
 - 其他控制接口：`/_control/config`（事件重复推送、乱序窗口、时延）、`/_control/accounts/:id/terminal`（停用账号）、`/_control/groups/:id/external-message`（外部用户发言）、`/_control/events/disconnect-all`（断开事件流）、`GET /_control/state`（查看内部状态与调用记录）。完整列表见 `apps/mock-gateway/src/gateway.ts`。
+
+### 模拟 Agent 服务
+
+- 默认行为：先 `get_recent_messages`，再用 `send_message` 回复"收到：<最后一条触发消息>"并 `finish`；触发消息含"广告"/"spam"且群开启了自动踢人时改为 `kick_user`。
+- 剧本：`POST /_control/scripts {"groupId": "...", "turns": [...]}` 为该群的下一次 run 排好每一轮的响应，例如：
+
+  ```bash
+  curl -X POST localhost:4002/_control/scripts -H 'content-type: application/json' -d '{
+    "groupId": "<群 id>",
+    "turns": [ {"raw": "not json"}, {"toolUse": {"name": "do_magic", "input": {}}}, {"endTurn": "bye"} ]
+  }'
+  ```
+
+  每一轮可以是 `raw`（原样返回的响应体，可配 `status`）、`toolUse`、`endTurn`、`delayMs`、`hang`。
+- 审计：`POST /_control/audits {"groupId"?: "...", "steps": [{"verdict": "fail"}, {"status": 500}, {"hang": true}]}`，未排剧本时一律 `pass`。
 
 ## 测试
 

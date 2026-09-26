@@ -17,6 +17,11 @@ const envSchema = z.object({
   LOG_LEVEL: z.string().default('info'),
   GATEWAY_SEND_TIMEOUT_MS: z.coerce.number().int().positive().default(8_000),
   JOIN_TIMEOUT_MS: z.coerce.number().int().positive().default(10_000),
+  AGENT_TURN_TIMEOUT_MS: z.coerce.number().int().positive().default(12_000),
+  AGENT_RUN_WALL_MS: z.coerce.number().int().positive().default(60_000),
+  AGENT_MAX_STEPS: z.coerce.number().int().positive().default(12),
+  AGENT_AUDIT_TIMEOUT_MS: z.coerce.number().int().positive().default(5_000),
+  AGENT_SEND_WAIT_MS: z.coerce.number().int().positive().default(5_000),
   ENABLE_TEST_HOOKS: z
     .enum(['true', 'false'])
     .default('false')

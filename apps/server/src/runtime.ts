@@ -12,6 +12,7 @@ import { DeliveryService } from './domain/messages/delivery';
 import { JobRunner } from './domain/jobs/jobRunner';
 import { createGroupJob } from './domain/jobs/createGroupJob';
 import { leaveAllJob } from './domain/jobs/leaveAllJob';
+import { AgentRunner } from './domain/agent/agentRunner';
 
 export interface WorkerSelection {
   ingest?: boolean;
@@ -20,6 +21,7 @@ export interface WorkerSelection {
   publisher?: boolean;
   delivery?: boolean;
   jobs?: boolean;
+  agent?: boolean;
 }
 
 /**
@@ -35,6 +37,7 @@ export class Runtime {
   readonly hub: WsHub;
   readonly delivery: DeliveryService;
   readonly jobs: JobRunner;
+  readonly agentRunner: AgentRunner;
   private abort = new AbortController();
   private running: Promise<unknown>[] = [];
 
@@ -91,6 +94,23 @@ export class Runtime {
         leave_all: leaveAllJob({ ...jobDeps, leaveEventTimeoutMs: config.JOIN_TIMEOUT_MS }),
       },
     });
+    this.agentRunner = new AgentRunner({
+      pool,
+      agent: ctx.agent,
+      gateway: ctx.gateway,
+      listener: this.listener,
+      log: log.child({ component: 'agent' }),
+      instanceId: config.INSTANCE_ID,
+      limits: {
+        maxSteps: config.AGENT_MAX_STEPS,
+        wallMs: config.AGENT_RUN_WALL_MS,
+        turnTimeoutMs: config.AGENT_TURN_TIMEOUT_MS,
+        auditTimeoutMs: config.AGENT_AUDIT_TIMEOUT_MS,
+        auditAttempts: 3,
+        sendWaitMs: config.AGENT_SEND_WAIT_MS,
+        kickConvergeMs: 2_000,
+      },
+    });
     this.hub = new WsHub({ pool, auth: ctx.auth, listener: this.listener, log: log.child({ component: 'ws' }) });
   }
 
@@ -101,7 +121,7 @@ export class Runtime {
   }
 
   async start(opts: { port: number; host?: string; workers?: WorkerSelection } = { port: 0 }): Promise<string> {
-    const w = { ingest: true, inbox: true, tasks: true, publisher: true, delivery: true, jobs: true, ...opts.workers };
+    const w = { ingest: true, inbox: true, tasks: true, publisher: true, delivery: true, jobs: true, agent: true, ...opts.workers };
     await this.listener.start();
     await this.hub.start(this.app.server);
     const address = await this.app.listen({ port: opts.port, host: opts.host ?? '0.0.0.0' });
@@ -114,6 +134,7 @@ export class Runtime {
     if (w.publisher) this.running.push(guard('publisher', this.publisher.run(signal)));
     if (w.delivery) this.running.push(guard('delivery', this.delivery.run(signal)));
     if (w.jobs) this.running.push(guard('jobs', this.jobs.run(signal)));
+    if (w.agent) this.running.push(guard('agent', this.agentRunner.run(signal)));
     return address;
   }
 

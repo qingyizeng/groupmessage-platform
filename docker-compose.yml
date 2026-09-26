@@ -25,6 +25,14 @@ services:
     ports:
       - "4001:4001"
 
+  mock-agent:
+    build: .
+    command: pnpm --filter @gmp/mock-agent start
+    environment:
+      PORT: 4002
+    ports:
+      - "4002:4002"
+
   server:
     build: .
     command: sh -c "pnpm --filter @gmp/server migrate && pnpm --filter @gmp/server start"
@@ -40,6 +48,8 @@ services:
       postgres:
         condition: service_healthy
       mock-gateway:
+        condition: service_started
+      mock-agent:
         condition: service_started
 
 volumes:

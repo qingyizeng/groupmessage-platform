@@ -351,7 +351,8 @@ export function buildMockGateway(opts: MockGatewayOptions = {}): MockGateway {
     opts.publicUrl ?? 'http://localhost:4001',
     opts.eventIdBase ?? 0,
   );
-  const app = Fastify({ logger: opts.logger ?? false });
+  // forceCloseConnections: hung requests and open event streams must not keep close() waiting.
+  const app = Fastify({ logger: opts.logger ?? false, forceCloseConnections: true });
 
   app.setErrorHandler((err: Error, _req, reply) => {
     if (err instanceof HttpFail) return reply.status(err.status).send({ code: err.code, message: err.code, ...err.extra });

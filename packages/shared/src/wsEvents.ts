@@ -7,6 +7,7 @@ export interface WsEventPayloads {
   inconsistency: { kind: string; ref: string; message: string };
   message: { groupId: string; msgId: string | null; isOwn: boolean; [extra: string]: unknown };
   agent_run: { runId: string; groupId: string; status: string; endReason: string | null };
+  agent_step: { runId: string; groupId: string; seq: number };
   sequence_run: { runId: string; groupId: string; status: string; currentStepIndex: number | null };
   group_changed: { groupId: string };
   job_changed: { jobId: string; status: string };

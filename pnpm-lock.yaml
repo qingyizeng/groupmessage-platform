@@ -8,6 +8,25 @@ importers:
 
   .: {}
 
+  apps/mock-agent:
+    dependencies:
+      fastify:
+        specifier: ^5.2.1
+        version: 5.12.5
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.7
+        version: 22.20.4
+      tsx:
+        specifier: ^4.19.2
+        version: 4.23.15
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.5
+        version: 3.2.7(@types/node@22.20.4)(tsx@4.23.15)
+
   apps/mock-gateway:
     dependencies:
       fastify:
@@ -35,6 +54,9 @@ importers:
       '@gmp/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      ajv:
+        specifier: ^8.20.0
+        version: 8.20.0
       bcryptjs:
         specifier: ^3.0.2
         version: 3.0.3
@@ -57,6 +79,9 @@ importers:
         specifier: ^3.24.1
         version: 3.25.76
     devDependencies:
+      '@gmp/mock-agent':
+        specifier: workspace:*
+        version: link:../mock-agent
       '@gmp/mock-gateway':
         specifier: workspace:*
         version: link:../mock-gateway

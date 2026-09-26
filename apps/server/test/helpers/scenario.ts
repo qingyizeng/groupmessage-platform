@@ -1,4 +1,5 @@
 import type { FaultRule } from '@gmp/mock-gateway';
+import type { AuditStep, TurnStep } from '@gmp/mock-agent';
 import { platformUserIdFor } from '@gmp/mock-gateway';
 import { login, waitFor, type TestRuntime } from './app';
 
@@ -119,6 +120,40 @@ export class Scenario {
     const calls = state.calls.filter((c) => c.endpoint === 'send' && (c.body as any)?.clientMsgId === clientMsgId);
     const landed = [...state.groups.values()].flatMap((g) => g.messages.filter((m) => m.clientMsgId === clientMsgId));
     return { calls, landed };
+  }
+
+  async enableAgent(groupId: string, autoKickEnabled = false) {
+    const res = await this.api('PATCH', `/api/groups/${groupId}`, { agentEnabled: true, autoKickEnabled });
+    if (res.statusCode !== 200) throw new Error(`enable agent failed: ${res.body}`);
+  }
+
+  /** Queues scripted turns for the next agent run of the group. */
+  script(groupId: string, turns: TurnStep[]) {
+    this.t.agent.state.scripts.push({ groupId, turns, next: 0 });
+  }
+
+  audits(steps: AuditStep[], groupId = '*') {
+    this.t.agent.state.audits.set(groupId, [...(this.t.agent.state.audits.get(groupId) ?? []), ...steps]);
+  }
+
+  async runs(groupId: string): Promise<any[]> {
+    return (await this.api('GET', `/api/groups/${groupId}/agent-runs?limit=100`)).json();
+  }
+
+  async run(runId: string): Promise<any> {
+    return (await this.api('GET', `/api/agent-runs/${runId}`)).json();
+  }
+
+  /** Waits until the group has `count` runs and none is running; returns them oldest first. */
+  async settledRuns(groupId: string, count = 1, timeout = 10_000): Promise<any[]> {
+    const runs = await waitFor(
+      async () => {
+        const rs = await this.runs(groupId);
+        return rs.length >= count && rs.every((r) => r.status !== 'running') ? rs : null;
+      },
+      { timeout, message: `${count} settled agent run(s) in ${groupId}` },
+    );
+    return runs.reverse();
   }
 
   async accountStatus(id: string) {

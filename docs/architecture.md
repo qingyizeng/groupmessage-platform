@@ -623,6 +623,16 @@ groupmessage-platform/
 | promote 返回 504 / 503 | 与 NOT_MEMBER_YET 一样在总次数 ≤ 2 的前提下重试 |
 | leave-all 时某个账号离线 | 网关返回 ACCOUNT_OFFLINE，记为该账号的退群失败，群主不退 |
 | 对已经 `left` 的群再次 leave-all | 409 GROUP_LEFT；同一个群已有进行中的 leave-all 时返回该任务的 jobId |
+| Agent 服务连不上（连接被拒等） | 记为一次 BAD_JSON 协议错误（rawResponse 为空），连续 3 次则 run 以 protocol_errors 结束 |
+| 墙钟在等待 `/agent/turn` 期间用完 | 不记步、不算协议错误，直接以 wall_clock 结束；审计等待期间用完同理，该工具不执行 |
+| 连续用同样入参调 `get_recent_messages` | 第 2 次正常返回并附 hint；第 3 次起返回 is_error / INVALID_INPUT 并附 hint；12 步上限兜底 |
+| `get_recent_messages` 的 limit | 按 [0, 50] 截取并取整；>50 不算入参错误 |
+| send_message 选哪个账号 | 本群 present 且 online 的服务账号，优先普通成员，再按 accountId 排序 |
+| kick_user 选哪个账号 | 本群 present、online、role 为 creator 或 admin 的账号，优先 creator |
+| kick 结果未知（504） | 等 2 秒看成员列表：已不在群里即成功；仍在则重试一次；仍无法确认返回 SEND_TIMEOUT |
+| kick 的目标已不在群里 | 返回 `{ kicked: true, note }`，不算错误 |
+| 审计 3 次拿不到结论时的步骤记录 | 该步 isError、errorCode = AUDIT_UNAVAILABLE、auditVerdict = unavailable；run → blocked / audit_blocked |
+| run 结束（任何原因）时仍有待处理消息 | 同一事务里立即创建下一次 run；群已停用 agent 或不可达时待处理消息直接丢弃 |
 
 ---
 
