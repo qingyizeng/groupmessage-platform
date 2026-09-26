@@ -5,6 +5,9 @@ import type {
   GroupDto,
   JobDto,
   MeDto,
+  SequenceDef,
+  SequenceDto,
+  SequenceRunDto,
   TimelinePageDto,
 } from '@gmp/shared';
 import { HttpClient } from './http';
@@ -43,4 +46,15 @@ export const api = {
 
   agentRuns: (groupId: string) => http.get<AgentRunDto[]>(`/api/groups/${enc(groupId)}/agent-runs`),
   agentRun: (id: string) => http.get<AgentRunDto>(`/api/agent-runs/${enc(id)}`),
+
+  sequences: () => http.get<SequenceDto[]>('/api/sequences'),
+  createSequence: (def: SequenceDef) => http.post<{ id: string }>('/api/sequences', def),
+  startSequence: (
+    groupId: string,
+    sequenceId: string,
+    vars: Record<string, string>,
+    stepVars: Record<string, Record<string, string>>,
+  ) => http.post<{ runId: string }>(`/api/groups/${enc(groupId)}/sequence-runs`, { sequenceId, vars, stepVars }),
+  sequenceRun: (id: string) => http.get<SequenceRunDto>(`/api/sequence-runs/${enc(id)}`),
+  groupSequenceRuns: (groupId: string) => http.get<SequenceRunDto[]>(`/api/groups/${enc(groupId)}/sequence-runs`),
 };

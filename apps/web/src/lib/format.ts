@@ -33,3 +33,18 @@ export const RUN_STATUS_COLOR: Record<string, string> = {
   blocked: 'magenta',
   cancelled: 'default',
 };
+
+export const SEQ_RUN_COLOR: Record<string, string> = {
+  running: 'processing',
+  finished: 'green',
+  failed: 'red',
+  stopped: 'orange',
+};
+
+export const SEQ_STEP_COLOR: Record<string, string> = {
+  pending: 'default',
+  accepted: 'blue',
+  sent: 'green',
+  skipped: 'orange',
+  failed: 'red',
+};

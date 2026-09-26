@@ -633,6 +633,14 @@ groupmessage-platform/
 | kick 的目标已不在群里 | 返回 `{ kicked: true, note }`，不算错误 |
 | 审计 3 次拿不到结论时的步骤记录 | 该步 isError、errorCode = AUDIT_UNAVAILABLE、auditVerdict = unavailable；run → blocked / audit_blocked |
 | run 结束（任何原因）时仍有待处理消息 | 同一事务里立即创建下一次 run；群已停用 agent 或不可达时待处理消息直接丢弃 |
+| 序列步骤的 `resolvedVars` / `varSources` 包含哪些 key | 该步文本里实际用到的 key |
+| 序列 admin 角色有多个候选 | online 优先，其次 role = admin 优先于 creator，再按 accountId；没有 online 但有 rate_limited 的候选时用它，步骤随限流顺延 |
+| 序列 member 角色 | role = member 中 online 的按 accountId 字典序取第一个；没有 online 时才考虑 rate_limited 的 |
+| 被跳过的步骤的时间戳 | `skippedAt` 与 `sentAt` 都记为跳过时刻（题目：跳过视为在跳过时刻"发出"） |
+| 步骤消息因账号进入终态被取消 | 步骤 skipped（failCode = ACCOUNT_TERMINAL），继续下一步 |
+| 步骤消息发送失败（非群不可写） | 步骤 failed，运行 failed；群不可写时运行 stopped |
+| 向不可达或已退出的群启动序列 | 409 GROUP_UNREACHABLE / GROUP_LEFT |
+| 重启规则的实现 | 同一时刻只有当前步有排期；执行时若已比计划晚超过 2 秒，视为停机期间错过，改排到"当前时刻 + 该步 delaySeconds" |
 
 ---
 

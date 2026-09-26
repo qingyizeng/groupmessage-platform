@@ -13,6 +13,7 @@ import { JobRunner } from './domain/jobs/jobRunner';
 import { createGroupJob } from './domain/jobs/createGroupJob';
 import { leaveAllJob } from './domain/jobs/leaveAllJob';
 import { AgentRunner } from './domain/agent/agentRunner';
+import { runDueStep } from './domain/sequences/sequenceEngine';
 
 export interface WorkerSelection {
   ingest?: boolean;
@@ -68,6 +69,7 @@ export class Runtime {
       handlers: {
         gateway_disconnect: ctx.accounts.handleDisconnectTask,
         rate_limit_expiry: ctx.accounts.handleRateLimitExpiry,
+        sequence_step: (task) => runDueStep(pool, task),
       },
     });
     this.publisher = new WsPublisher({

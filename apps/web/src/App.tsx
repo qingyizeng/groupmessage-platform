@@ -9,6 +9,8 @@ import { AccountsPage } from './pages/AccountsPage';
 import { GroupsPage } from './pages/GroupsPage';
 import { GroupDetailPage } from './pages/GroupDetailPage';
 import { AgentRunPage } from './pages/AgentRunPage';
+import { SequencesPage } from './pages/SequencesPage';
+import { SequenceRunPage } from './pages/SequenceRunPage';
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false, staleTime: 5_000 } },
@@ -30,6 +32,8 @@ export function App() {
                       <Route path="/groups" element={<GroupsPage />} />
                       <Route path="/groups/:id" element={<GroupDetailPage />} />
                       <Route path="/agent-runs/:id" element={<AgentRunPage />} />
+                      <Route path="/sequences" element={<SequencesPage />} />
+                      <Route path="/sequence-runs/:id" element={<SequenceRunPage />} />
                       <Route path="*" element={<Navigate to="/accounts" replace />} />
                     </Route>
                   </Route>
@@ -62,7 +66,11 @@ function Shell() {
   const { state } = useRealtime();
   const navigate = useNavigate();
   const location = useLocation();
-  const selected = location.pathname.startsWith('/groups') || location.pathname.startsWith('/agent-runs') ? 'groups' : 'accounts';
+  const selected = location.pathname.startsWith('/sequence')
+    ? 'sequences'
+    : location.pathname.startsWith('/groups') || location.pathname.startsWith('/agent-runs')
+      ? 'groups'
+      : 'accounts';
   const conn = CONNECTION[state]!;
 
   return (
@@ -79,6 +87,7 @@ function Shell() {
           items={[
             { key: 'accounts', label: '账号', onClick: () => navigate('/accounts') },
             { key: 'groups', label: '群组', onClick: () => navigate('/groups') },
+            { key: 'sequences', label: '序列', onClick: () => navigate('/sequences') },
           ]}
         />
         <Space>

@@ -91,3 +91,40 @@ export interface AgentRunDto {
   finishedAt: string | null;
   steps?: AgentStepDto[];
 }
+
+export interface SequenceDto {
+  id: string;
+  name: string;
+  steps: { index: number; accountRole: 'admin' | 'member'; text: string; delaySeconds: number }[];
+  createdAt: string;
+}
+
+export type SequenceRunStatus = 'running' | 'finished' | 'failed' | 'stopped';
+export type SequenceStepStatus = 'pending' | 'accepted' | 'sent' | 'skipped' | 'failed';
+
+export interface SequenceRunDto {
+  id: string;
+  groupId: string;
+  sequenceId: string;
+  status: SequenceRunStatus;
+  currentStepIndex: number | null;
+  vars: Record<string, string>;
+  stepVars: Record<string, Record<string, string>>;
+  createdAt: string;
+  finishedAt: string | null;
+  steps?: {
+    index: number;
+    status: SequenceStepStatus;
+    accountRole: string;
+    text: string;
+    delaySeconds: number;
+    scheduledAt: string | null;
+    sentAt: string | null;
+    skippedAt: string | null;
+    accountId: string | null;
+    clientMsgId: string | null;
+    failCode: string | null;
+    resolvedVars: Record<string, string>;
+    varSources: Record<string, string>;
+  }[];
+}

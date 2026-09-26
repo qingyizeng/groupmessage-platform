@@ -11,6 +11,8 @@ import { AgentClient } from './domain/agent/agentClient';
 import { activeAgentRuns, agentSettingsHook, agentTriggerHook, stopAgentForGroup } from './domain/agent/runRepo';
 import { registerInboundMessageHook } from './domain/messages/inbound';
 import { registerGroupUnreachableHook } from './domain/groups/groupRepo';
+import { registerOutboundHook } from './domain/messages/outbound';
+import { activeSequenceRuns, sequenceOutboundHook, stopSequencesForGroup } from './domain/sequences/sequenceEngine';
 
 export interface CoreDeps {
   config: Config;
@@ -34,9 +36,11 @@ export function createContext(deps: CoreDeps): AppContext {
   // Module-level functions, so registering again (another runtime in the same process) is a no-op.
   registerInboundMessageHook(agentTriggerHook);
   registerGroupUnreachableHook(stopAgentForGroup);
+  registerGroupUnreachableHook(stopSequencesForGroup);
+  registerOutboundHook(sequenceOutboundHook);
   const groups = new GroupService({ pool: deps.pool });
   groups.onSettingsChanged(agentSettingsHook);
-  groups.setActiveRunResolvers({ agent: activeAgentRuns });
+  groups.setActiveRunResolvers({ agent: activeAgentRuns, sequence: activeSequenceRuns });
   return {
     ...deps,
     gateway,

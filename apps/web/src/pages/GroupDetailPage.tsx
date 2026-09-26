@@ -91,8 +91,12 @@ export function GroupDetailPage() {
             />
           </Descriptions.Item>
           <Descriptions.Item label="运行中">
-            {g.activeAgentRunId ? <Link to={`/agent-runs/${g.activeAgentRunId}`}>agent run</Link> : '—'}
-            {g.activeSequenceRunId ? <> · 序列运行中</> : null}
+            <Space size={8}>
+              {g.activeAgentRunId && <Link to={`/agent-runs/${g.activeAgentRunId}`}>agent run</Link>}
+              {g.activeSequenceRunId && <Link to={`/sequence-runs/${g.activeSequenceRunId}`}>序列运行</Link>}
+              {!g.activeAgentRunId && !g.activeSequenceRunId && '—'}
+              {g.status === 'active' && <Link to={`/sequences?groupId=${g.id}`}>发起序列</Link>}
+            </Space>
           </Descriptions.Item>
         </Descriptions>
       </Card>

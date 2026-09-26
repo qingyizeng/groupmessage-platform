@@ -96,6 +96,7 @@ function routeEvent(frame: WsEventFrame, qc: ReturnType<typeof useQueryClient>) 
       break;
     case 'sequence_run':
       void qc.invalidateQueries({ queryKey: ['sequenceRun', p.runId] });
+      void qc.invalidateQueries({ queryKey: ['sequenceRuns', p.groupId] });
       void qc.invalidateQueries({ queryKey: ['group', p.groupId] });
       break;
     case 'inconsistency':
