@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { RealtimeClient } from './ws';
 
 class FakeSocket {
@@ -74,5 +74,57 @@ describe('RealtimeClient', () => {
     expect(resynced).toBe(true);
     expect(client.seq).toBe(42);
     client.stop();
+  });
+
+  describe('liveness', () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    const make = () =>
+      new RealtimeClient({
+        url: 'ws://x/ws',
+        getToken: () => 'tok',
+        refreshToken: async () => 'tok',
+        onEvent: () => undefined,
+        onResync: () => undefined,
+        livenessTimeoutMs: 10_000,
+        createSocket: (u) => new FakeSocket(u) as unknown as WebSocket,
+      });
+
+    it('replaces a connection that has been silent for too long, resuming from the last seq', () => {
+      vi.useFakeTimers();
+      FakeSocket.all = [];
+      const client = make();
+      client.start();
+      const first = FakeSocket.all[0]!;
+      first.open();
+      first.receive({ type: 'auth', success: true });
+      first.receive({ seq: 7, type: 'inconsistency', payload: {} });
+      vi.advanceTimersByTime(8_000);
+      first.receive({ type: 'ping' });
+      vi.advanceTimersByTime(8_000);
+      expect(FakeSocket.all).toHaveLength(1);
+      vi.advanceTimersByTime(8_000);
+      expect(FakeSocket.all).toHaveLength(2);
+      const second = FakeSocket.all[1]!;
+      second.open();
+      expect(second.sent[0]).toEqual({ type: 'auth', accessToken: 'tok', sinceSeq: 7 });
+      client.stop();
+    });
+
+    it('nudge reconnects at once when the socket is closed, and leaves an open one alone', () => {
+      vi.useFakeTimers();
+      FakeSocket.all = [];
+      const client = make();
+      client.start();
+      FakeSocket.all[0]!.open();
+      client.nudge();
+      expect(FakeSocket.all).toHaveLength(1);
+      FakeSocket.all[0]!.close();
+      client.nudge();
+      expect(FakeSocket.all).toHaveLength(2);
+      client.stop();
+    });
   });
 });

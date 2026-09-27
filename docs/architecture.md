@@ -454,7 +454,9 @@ flowchart LR
 2. **单发布者**（advisory lock 选主）每 50ms 一次或被 NOTIFY 唤醒后，执行 `UPDATE ws_outbox SET seq = nextval('ws_seq') WHERE id IN (SELECT id … WHERE seq IS NULL ORDER BY id FOR UPDATE) RETURNING *`，提交后 `NOTIFY ws_publish, maxSeq`。发布者只能看到已提交的行，所以分配出的 seq **单调且不会被跳过**。
 3. 每个实例的 WS 网关收到 `ws_publish` 后，按 seq 读出新事件并推给本实例上已认证的连接。
 4. **补发**：客户端连接后发 `{type:'auth', accessToken, sinceSeq}`。服务端先订阅实时流并缓冲，再从表里补发 `seq > sinceSeq` 的事件，然后把缓冲区按 seq 去重后发出。如果 `sinceSeq` 早于保留期（24 小时），就回 `{type:'resync_required'}`，让前端全量刷新。
-5. 会话被吊销（logout 或 refresh token 被重用）时，通过 NOTIFY 关闭该会话的所有 WS 连接。
+5. 会话被吊销（logout 或 refresh token 被重用）或 access token 过期时，服务端每 30 秒复核一次并关闭这些连接；客户端换新 token 后重连并按 `sinceSeq` 补发。
+6. **心跳**：服务端每 `WS_PING_MS` 发协议层 ping，上一轮没回 pong 的连接直接断开；同时给已认证客户端发应用层 `{type:'ping'}`。客户端超过约 2.5 个心跳周期收不到任何帧就判定连接已死、立即重建；浏览器 `online` / 页面回到前台时也立即重连；重连退避上限 2 秒。这样半开连接（网络切换、休眠）也能满足 B4"重连后 3 秒内出现"。
+7. **保留期**：定期维护任务删除超过 `WS_RETENTION_HOURS` 的已推送事件；客户端的 `sinceSeq` 早于保留的最早事件时收到 `resync_required` 并全量刷新。
 
 事件类型：题目要求的 6 种，另加 `message_updated`、`group_changed`、`job_changed`、`agent_step`、`resync_required`。`message` 事件的 payload 额外带上整行消息，前端不用再回查。
 
@@ -499,12 +501,13 @@ flowchart LR
 | Inbox 处理器 | `SKIP LOCKED` | 否 | NOTIFY + 100ms 轮询 |
 | 出站发送器 | 按账号 `SKIP LOCKED`，每账号只处理队头 | 否 | NOTIFY + 100ms |
 | 未知状态核对器 | `SKIP LOCKED` | 否 | 300ms |
-| 定时任务调度器（限流到期、disconnect 重试、序列步骤、job 超时、媒体清理） | `scheduled_tasks` 租约 | 否 | 200ms |
+| 定时任务调度器（限流到期、网关 disconnect、序列步骤、媒体下载与清理、定期维护） | `scheduled_tasks` 租约 | 否 | NOTIFY + 200ms |
 | Agent 执行器 | `agent_runs` 租约 + 心跳 | 否 | 常驻 |
 | Job 执行器 | `jobs` 租约 | 否 | 常驻 |
-| WS 发布者 | advisory lock | 是 | NOTIFY + 50ms |
+| WS 发布者 | advisory lock | 是 | NOTIFY + 200ms |
+| WS 心跳 | 每实例 | 否 | `WS_PING_MS`（15s） |
 
-- 统一的循环框架（`workers/runtime.ts`）负责领取、续租心跳、异常退避、优雅停机。
+- 每个 worker 各自实现领取、续租心跳、异常退避与优雅停机，统一由 `src/runtime.ts` 启停；等待与唤醒用 `lib/async.ts` 的 `Waker`（NOTIFY 唤醒 + 轮询兜底）。
 - `INSTANCE_ID` 默认取 `hostname:port`。重启后同一实例名可以立即接管自己之前的租约，不用等租约过期。
 
 ---
@@ -578,32 +581,38 @@ apps/web/src
 groupmessage-platform/
 ├─ apps/
 │  ├─ server/
-│  │  ├─ migrations/0001_init.sql …
+│  │  ├─ migrations/0001_auth.sql … 0007_media.sql
+│  │  ├─ test/                     # 集成测试（真实 PG + 进程内模拟服务）、kill -9 崩溃测试
 │  │  └─ src/
-│  │     ├─ main.ts               # 版本门禁 → HTTP → workers
-│  │     ├─ config.ts  clock.ts  crashpoint.ts
-│  │     ├─ db/                   # pool、withTx（冲突自动重试）、migrate.ts
-│  │     ├─ http/                 # app、errors、auth、rbac、routes/*
-│  │     ├─ domain/
-│  │     │  ├─ accounts/          # transitionAccount（收口）
-│  │     │  ├─ messages/          # updateOutbound（收口）、timeline、inbound
-│  │     │  ├─ groups/            # markGroupUnreachable（收口）、members
-│  │     │  ├─ jobs/              # createGroup、leaveAll 状态机
-│  │     │  ├─ agent/             # engine、protocol、audit、tools/*
-│  │     │  ├─ sequences/         # engine（解析函数来自 shared）
-│  │     │  └─ auth/
-│  │     ├─ integrations/         # gatewayClient（带类型的错误 + 超时）、sseClient、agentClient
-│  │     ├─ events/               # ingest、handlers/*
-│  │     ├─ realtime/             # outbox、publisher、wsServer
-│  │     └─ workers/              # runtime、dispatcher、reconciler、scheduler、agentRunner、jobRunner
-│  ├─ web/
-│  ├─ mock-gateway/
-│  ├─ mock-agent/
-│  └─ llm-agent/                  # C2
-├─ packages/shared/               # 类型、转移表、resolveSequence、错误码
-├─ e2e/                           # Playwright
+│  │     ├─ main.ts                # 配置 → schema 版本门禁 → Runtime
+│  │     ├─ runtime.ts             # 装配 HTTP、WS 与全部后台 worker
+│  │     ├─ context.ts             # 服务实例与挂接点注册
+│  │     ├─ config.ts
+│  │     ├─ db/                    # pool、withTx（冲突自动重试）、迁移
+│  │     ├─ http/                  # app、统一错误、鉴权与只读守卫、routes/*
+│  │     ├─ infra/                 # PgListener（LISTEN/NOTIFY）、advisory lock 选主
+│  │     ├─ integrations/          # 网关客户端（带结果语义的错误）、SSE 解析
+│  │     ├─ events/                # 事件接入（收件箱、续传点）、处理器
+│  │     ├─ realtime/              # WS outbox、seq 发布者、WsHub（补发、心跳）
+│  │     ├─ lib/                   # 等待/唤醒、故障点、日志、时钟
+│  │     └─ domain/
+│  │        ├─ accounts/           # transitions.ts（账号状态唯一入口）、accountService
+│  │        ├─ messages/           # outbound.ts（出站唯一入口）、delivery（发送与核对）、inbound、时间线
+│  │        ├─ groups/             # groupRepo（成员事件、markGroupUnreachable）、groupService
+│  │        ├─ jobs/               # 任务框架、建群、leave-all
+│  │        ├─ agent/              # runner、executor、协议校验、工具定义、run 存储
+│  │        ├─ sequences/          # 序列引擎（解析函数来自 shared）
+│  │        ├─ media/              # C1 下载与清理
+│  │        ├─ tasks/              # 持久化定时任务
+│  │        └─ maintenance.ts      # 定期清理
+│  ├─ web/                         # 控制台
+│  ├─ mock-gateway/                # 模拟网关 + 故障注入
+│  ├─ mock-agent/                  # 模拟 Agent（规则 agent + 剧本）
+│  └─ llm-agent/                   # C2：Claude 适配器
+├─ packages/shared/                # 类型、转移表、resolveSequence、错误码、WS 事件类型
+├─ e2e/                            # Playwright
 ├─ docs/architecture.md
-├─ docker-compose.yml
+├─ docker-compose.yml / Dockerfile
 └─ README.md
 ```
 

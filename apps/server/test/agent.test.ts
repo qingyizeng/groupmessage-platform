@@ -71,11 +71,20 @@ describe('agent runs', () => {
 
   it('messages arriving during a run go, all together, into the next run', async () => {
     const g = await agentGroup();
-    s.script(g.groupId, [{ delayMs: 800, toolUse: { name: 'finish', input: { summary: 'slow' } } }]);
+    s.script(g.groupId, [{ delayMs: 2500, toolUse: { name: 'finish', input: { summary: 'slow' } } }]);
     await say(g, 'first');
     await waitFor(async () => (await s.runs(g.groupId)).length === 1);
     await say(g, 'second');
     await say(g, 'third');
+    // Both are recorded as pending while the first run is still going.
+    await waitFor(async () => {
+      const { rows } = await t.db.pool.query(
+        `SELECT count(*)::int AS n FROM agent_triggers WHERE group_id = $1 AND run_id IS NULL AND NOT discarded`,
+        [g.groupId],
+      );
+      return rows[0].n === 2;
+    }, { message: 'two pending triggers' });
+    expect((await s.runs(g.groupId))[0].status).toBe('running');
     const runs = await s.settledRuns(g.groupId, 2);
     expect(runs[0].triggerMessages.map((m: any) => m.text)).toEqual(['first']);
     expect(runs[1].triggerMessages.map((m: any) => m.text)).toEqual(['second', 'third']);

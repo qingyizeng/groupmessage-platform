@@ -162,6 +162,8 @@ pnpm test:e2e    # Playwright 端到端测试：自动起一套隔离环境（�
 | `AGENT_TURN_TIMEOUT_MS` / `AGENT_RUN_WALL_MS` / `AGENT_MAX_STEPS` | 12000 / 60000 / 12 | agent 每轮超时、总时长、步数上限 |
 | `AGENT_AUDIT_TIMEOUT_MS` / `AGENT_SEND_WAIT_MS` | 5000 / 5000 | 单次审计超时、send_message 等待确认的时长 |
 | `MEDIA_DIR` / `MEDIA_RETENTION_DAYS` / `MEDIA_CLEANUP_INTERVAL_MS` | `<repo>/media` / 30 / 1 小时 | 媒体文件目录、保留天数、清理间隔 |
+| `WS_PING_MS` / `WS_RETENTION_HOURS` | 15000 / 24 | WS 心跳间隔；推送事件可补发的保留时长（更早的断点会要求前端全量刷新） |
+| `MAINTENANCE_INTERVAL_MS` | 10 分钟 | 定期清理：过期的 WS 事件、已处理超过 7 天且位于续传点之前的网关事件、过期的 token 吊销记录 |
 | `COOKIE_SECURE` | false | HTTPS 部署时设为 true |
 
 ## 数据库迁移
@@ -174,6 +176,7 @@ pnpm test:e2e    # Playwright 端到端测试：自动起一套隔离环境（�
 - 网关的建群没有幂等键：若在"网关已建群、我方尚未保存"的瞬间崩溃，续跑会再建一个群，旧的成为孤儿群（已尽量缩小窗口：建群成功后本地保存会单独重试）。
 - 504 后确认未发出再重发时，若重发请求本身很慢，状态会在 `unknown` 停留超过 5 秒——在确认未发出之前不能重发，这一约束优先。
 - 模拟网关状态只在内存中；重启模拟网关后需要重新连接账号、重新建群。
+- agent run 的 60 秒从执行器领取 run 时开始计时（创建后立即被唤醒领取，通常只差几十毫秒）；这样重启后的停机时间才能准确地不计入。
 - 媒体清理对"仍被运行中的 agent run 用到"的判断是按群：群里有运行中的 run 时本轮不删该群的文件，run 结束后的下一轮再删。
 - LLM 适配器的 thinking 块缓存在进程内存中；适配器重启后，正在进行的 run 下一轮不带之前的 thinking 块。
 - 题目中没有写明、由我自行决定的行为，逐条列在 [docs/architecture.md §11](docs/architecture.md)。
