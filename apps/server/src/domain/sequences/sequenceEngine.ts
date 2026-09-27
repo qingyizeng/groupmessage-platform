@@ -230,6 +230,11 @@ export async function runDueStep(pool: Pool, task: Task): Promise<void> {
  */
 export async function sequenceOutboundHook(tx: Queryable, before: MessageRow, after: MessageRow): Promise<void> {
   if (!after.sequence_run_step_id || before.phase === after.phase) return;
+  // Same lock order as runDueStep (run, then step), so the two never deadlock.
+  await tx.query(
+    'SELECT 1 FROM sequence_runs WHERE id = (SELECT run_id FROM sequence_run_steps WHERE id = $1) FOR UPDATE',
+    [after.sequence_run_step_id],
+  );
   const { rows } = await tx.query<StepRow & { run_status: string; group_status: string }>(
     `SELECT s.*, r.status AS run_status, g.status AS group_status
        FROM sequence_run_steps s JOIN sequence_runs r ON r.id = s.run_id JOIN groups g ON g.id = r.group_id

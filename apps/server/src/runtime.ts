@@ -5,7 +5,8 @@ import { PgListener } from './infra/pgListener';
 import { EventIngestor } from './events/ingest';
 import { InboxProcessor } from './events/inboxProcessor';
 import { createEventHandlers } from './events/handlers';
-import { TaskRunner } from './domain/tasks/scheduledTasks';
+import { ensureTask, recurringTask, TaskRunner } from './domain/tasks/scheduledTasks';
+import { runMaintenance } from './domain/maintenance';
 import { WsPublisher } from './realtime/publisher';
 import { WsHub } from './realtime/wsHub';
 import { DeliveryService } from './domain/messages/delivery';
@@ -72,6 +73,9 @@ export class Runtime {
         sequence_step: (task) => runDueStep(pool, task),
         media_download: ctx.media.handleDownloadTask,
         media_cleanup: ctx.media.handleCleanupTask,
+        maintenance: recurringTask(pool, 'maintenance', 'global', config.MAINTENANCE_INTERVAL_MS, () =>
+          runMaintenance(pool, { wsRetentionHours: config.WS_RETENTION_HOURS }),
+        ),
       },
     });
     this.publisher = new WsPublisher({
@@ -115,7 +119,13 @@ export class Runtime {
         kickConvergeMs: 2_000,
       },
     });
-    this.hub = new WsHub({ pool, auth: ctx.auth, listener: this.listener, log: log.child({ component: 'ws' }) });
+    this.hub = new WsHub({
+      pool,
+      auth: ctx.auth,
+      listener: this.listener,
+      log: log.child({ component: 'ws' }),
+      pingMs: config.WS_PING_MS,
+    });
   }
 
   static async create(deps: CoreDeps): Promise<Runtime> {
@@ -128,6 +138,7 @@ export class Runtime {
     const w = { ingest: true, inbox: true, tasks: true, publisher: true, delivery: true, jobs: true, agent: true, ...opts.workers };
     await this.listener.start();
     await this.ctx.media.ensureCleanupScheduled();
+    await ensureTask(this.ctx.pool, 'maintenance', 'global', this.ctx.config.MAINTENANCE_INTERVAL_MS);
     await this.hub.start(this.app.server);
     const address = await this.app.listen({ port: opts.port, host: opts.host ?? '0.0.0.0' });
     const signal = this.abort.signal;

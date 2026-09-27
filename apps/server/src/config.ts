@@ -15,6 +15,10 @@ const envSchema = z.object({
   /** Where downloaded media is stored (defaults to <repo>/media). */
   MEDIA_DIR: z.string().optional(),
   MEDIA_RETENTION_DAYS: z.coerce.number().positive().default(30),
+  /** How long pushed WebSocket events stay replayable for reconnecting clients. */
+  WS_RETENTION_HOURS: z.coerce.number().positive().default(24),
+  WS_PING_MS: z.coerce.number().int().positive().default(15_000),
+  MAINTENANCE_INTERVAL_MS: z.coerce.number().int().positive().default(10 * 60 * 1000),
   MEDIA_CLEANUP_INTERVAL_MS: z.coerce.number().int().positive().default(60 * 60 * 1000),
   /** Built console to serve (defaults to apps/web/dist when it exists). */
   WEB_DIST: z.string().optional(),

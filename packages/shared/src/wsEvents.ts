@@ -32,4 +32,6 @@ export interface WsAuthMessage {
 export type WsControlFrame =
   | { type: 'auth'; success: true }
   | { type: 'auth'; success: false; error: string }
-  | { type: 'resync_required'; latestSeq: number };
+  | { type: 'resync_required'; latestSeq: number }
+  /** Heartbeat, so clients can tell a live but quiet connection from a dead one. */
+  | { type: 'ping' };

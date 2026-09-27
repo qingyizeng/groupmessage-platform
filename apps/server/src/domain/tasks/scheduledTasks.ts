@@ -1,11 +1,18 @@
 import type { Pool, Queryable } from '../../db/pool';
+import { withTx } from '../../db/tx';
 import type { Logger } from '../../lib/logger';
 import { Waker } from '../../lib/async';
 import type { PgListener } from '../../infra/pgListener';
 
 export const TASKS_CHANNEL = 'scheduled_tasks';
 
-export type TaskKind = 'rate_limit_expiry' | 'gateway_disconnect' | 'sequence_step' | 'media_download' | 'media_cleanup';
+export type TaskKind =
+  | 'rate_limit_expiry'
+  | 'gateway_disconnect'
+  | 'sequence_step'
+  | 'media_download'
+  | 'media_cleanup'
+  | 'maintenance';
 
 export interface Task {
   id: number;
@@ -37,6 +44,26 @@ export async function scheduleTask(
     [kind, ref, runAt, JSON.stringify(payload)],
   );
   await tx.query(`NOTIFY ${TASKS_CHANNEL}`);
+}
+
+/** Creates the task if it does not exist yet, without postponing an already scheduled run. */
+export async function ensureTask(pool: Pool, kind: TaskKind, ref: string, delayMs: number): Promise<void> {
+  await pool.query(
+    `INSERT INTO scheduled_tasks (kind, ref, run_at) VALUES ($1, $2, now() + make_interval(secs => $3))
+     ON CONFLICT (kind, ref) DO NOTHING`,
+    [kind, ref, delayMs / 1000],
+  );
+}
+
+/** A handler that runs `work` and always schedules its next run `intervalMs` later. */
+export function recurringTask(pool: Pool, kind: TaskKind, ref: string, intervalMs: number, work: () => Promise<unknown>): TaskHandler {
+  return async () => {
+    try {
+      await work();
+    } finally {
+      await withTx(pool, (tx) => scheduleTask(tx, kind, ref, new Date(Date.now() + intervalMs)));
+    }
+  };
 }
 
 export async function cancelTask(tx: Queryable, kind: TaskKind, ref: string): Promise<void> {

@@ -12,7 +12,14 @@ export interface RealtimeOptions {
   onResync: () => void;
   onState?: (state: ConnectionState) => void;
   createSocket?: (url: string) => WebSocket;
+  /**
+   * An open connection that has received nothing (not even a server ping) for this long is treated
+   * as dead and replaced. The server pings every 15 s by default.
+   */
+  livenessTimeoutMs?: number;
 }
+
+const MAX_BACKOFF_MS = 2_000;
 
 /**
  * WebSocket client for /ws. Remembers the last seq it delivered; after any disconnect it
@@ -26,6 +33,8 @@ export class RealtimeClient {
   private attempt = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private authFailures = 0;
+  private lastFrameAt = 0;
+  private watchdog: ReturnType<typeof setInterval> | null = null;
 
   constructor(private readonly opts: RealtimeOptions) {}
 
@@ -36,14 +45,47 @@ export class RealtimeClient {
   start(): void {
     if (!this.stopped) return;
     this.stopped = false;
+    const timeout = this.opts.livenessTimeoutMs ?? 40_000;
+    this.watchdog = setInterval(() => {
+      if (this.socket?.readyState === 1 && Date.now() - this.lastFrameAt > timeout) this.reconnectNow();
+    }, Math.min(5_000, timeout / 2));
     this.connect();
   }
 
   stop(): void {
     this.stopped = true;
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    if (this.watchdog) clearInterval(this.watchdog);
+    this.watchdog = null;
     this.socket?.close();
     this.socket = null;
+  }
+
+  /**
+   * Hint that the network may have changed (browser back online, tab visible again): reconnect at
+   * once if the connection is not open, without waiting for the backoff timer.
+   */
+  nudge(): void {
+    if (this.stopped) return;
+    if (this.socket && this.socket.readyState <= 1) return; // connecting or open
+    this.attempt = 0;
+    this.reconnectNow();
+  }
+
+  /** Drops the current socket without waiting for its close handshake and connects again right away. */
+  private reconnectNow(): void {
+    const old = this.socket;
+    this.socket = null;
+    if (old) {
+      old.onclose = null;
+      old.onmessage = null;
+      old.onerror = null;
+      old.close();
+    }
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
+    this.opts.onState?.('connecting');
+    this.connect();
   }
 
   /** Re-authenticates the open connection with a new token (after a refresh). */
@@ -54,6 +96,7 @@ export class RealtimeClient {
 
   /** Visible for tests: handles one raw frame. */
   handle(raw: string): void {
+    this.lastFrameAt = Date.now();
     let frame: WsEventFrame | WsControlFrame;
     try {
       frame = JSON.parse(raw);
@@ -87,6 +130,7 @@ export class RealtimeClient {
     this.opts.onState?.('connecting');
     const ws = (this.opts.createSocket ?? ((u) => new WebSocket(u)))(this.opts.url);
     this.socket = ws;
+    this.lastFrameAt = Date.now();
     ws.onopen = () => {
       ws.send(
         JSON.stringify({
@@ -108,7 +152,7 @@ export class RealtimeClient {
 
   private scheduleReconnect() {
     if (this.stopped || this.reconnectTimer) return;
-    const delay = Math.min(250 * 2 ** this.attempt++, 3_000);
+    const delay = Math.min(250 * 2 ** this.attempt++, MAX_BACKOFF_MS);
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       this.connect();

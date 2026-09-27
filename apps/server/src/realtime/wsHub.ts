@@ -21,6 +21,8 @@ const PAGE = 1000;
 
 interface Client {
   ws: WebSocket;
+  /** Answered the last protocol-level ping. */
+  alive: boolean;
   auth: AuthContext | null;
   token: string | null;
   /** Highest seq delivered to this client. */
@@ -42,7 +44,15 @@ export class WsHub {
   private timers: NodeJS.Timeout[] = [];
 
   constructor(
-    private readonly deps: { pool: Pool; auth: AuthService; listener: PgListener; log: Logger; pollMs?: number },
+    private readonly deps: {
+      pool: Pool;
+      auth: AuthService;
+      listener: PgListener;
+      log: Logger;
+      pollMs?: number;
+      /** Heartbeat interval: dead connections are dropped and clients get an application-level ping. */
+      pingMs?: number;
+    },
   ) {}
 
   async start(server: Server): Promise<void> {
@@ -51,6 +61,7 @@ export class WsHub {
     this.deps.listener.on(PUBLISH_CHANNEL, () => this.pull());
     this.timers.push(setInterval(() => this.pull(), this.deps.pollMs ?? 1000));
     this.timers.push(setInterval(() => void this.revalidateAll(), REVALIDATE_MS));
+    this.timers.push(setInterval(() => this.heartbeat(), this.deps.pingMs ?? 15_000));
     server.on('upgrade', (req: IncomingMessage, socket: Duplex, head: Buffer) => {
       if (new URL(req.url ?? '/', 'http://x').pathname !== '/ws') {
         socket.destroy();
@@ -72,7 +83,10 @@ export class WsHub {
   }
 
   private accept(ws: WebSocket) {
-    const client: Client = { ws, auth: null, token: null, lastSent: 0, buffer: null };
+    const client: Client = { ws, alive: true, auth: null, token: null, lastSent: 0, buffer: null };
+    ws.on('pong', () => {
+      client.alive = true;
+    });
     this.clients.add(client);
     const authTimer = setTimeout(() => {
       if (!client.auth) this.reject(client, 'auth timeout');
@@ -192,6 +206,23 @@ export class WsHub {
   private reject(client: Client, error: string) {
     this.send(client, { type: 'auth', success: false, error });
     client.ws.close(4401, 'unauthorized');
+  }
+
+  /**
+   * Terminates connections that did not answer the previous ping (half-open TCP after a network
+   * change or sleep), pings the rest, and sends authenticated clients an application-level ping so
+   * the browser, which cannot see protocol pings, can detect a dead connection on its side too.
+   */
+  private heartbeat() {
+    for (const c of this.clients) {
+      if (!c.alive) {
+        c.ws.terminate();
+        continue;
+      }
+      c.alive = false;
+      c.ws.ping();
+      if (c.auth && !c.buffer) this.send(c, { type: 'ping' });
+    }
   }
 
   /** Closes connections whose token expired or whose session was revoked (logout, token reuse). */

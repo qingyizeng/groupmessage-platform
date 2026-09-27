@@ -413,11 +413,11 @@ export class RunExecutor {
         ? outcome.content
         : { code: outcome.code, message: outcome.message, ...(outcome.hint ? { hint: outcome.hint } : {}) };
     const content = boundContent(payload);
+    const appended: TranscriptMessage = {
+      role: 'user',
+      content: [{ type: 'tool_result', tool_use_id: call.tool_use_id, content, ...(isError ? { is_error: true } : {}) }],
+    };
     await withTx(this.deps.pool, async (tx) => {
-      const appended: TranscriptMessage = {
-        role: 'user',
-        content: [{ type: 'tool_result', tool_use_id: call.tool_use_id, content, ...(isError ? { is_error: true } : {}) }],
-      };
       await tx.query('INSERT INTO agent_run_messages (run_id, idx, role, content) VALUES ($1, $2, $3, $4)', [
         this.run.id,
         this.transcript.length,
@@ -446,8 +446,10 @@ export class RunExecutor {
         Math.round(this.elapsed()),
       ]);
       await emitWs(tx, 'agent_step', { runId: this.run.id, groupId: this.run.group_id, seq: call.step_seq });
-      this.transcript.push(appended);
+      failpoints.hit('agent.tool_result_tx');
     });
+    // Only after commit: withTx may run the callback more than once.
+    this.transcript.push(appended);
     return false;
   }
 
@@ -573,9 +575,9 @@ export class RunExecutor {
     return this.outboundOutcome(await this.waitOutbound(enqueued.id), 'pass');
   }
 
-  /** Waits up to sendWaitMs for the message to be accepted, sent or to fail. */
+  /** Waits up to sendWaitMs (never past the run's wall-clock limit) for the message to be accepted, sent or to fail. */
   private async waitOutbound(messageId: number) {
-    const deadline = Date.now() + this.deps.limits.sendWaitMs;
+    const deadline = Date.now() + Math.min(this.deps.limits.sendWaitMs, Math.max(0, this.remaining()));
     for (;;) {
       const { rows } = await this.deps.pool.query<{
         client_msg_id: string;

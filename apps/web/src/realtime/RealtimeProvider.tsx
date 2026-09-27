@@ -45,9 +45,15 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
       },
     });
     const offToken = http.onToken((token) => client.updateToken(token));
+    const nudge = () => client.nudge();
+    const onVisible = () => document.visibilityState === 'visible' && client.nudge();
+    window.addEventListener('online', nudge);
+    document.addEventListener('visibilitychange', onVisible);
     client.start();
     return () => {
       offToken();
+      window.removeEventListener('online', nudge);
+      document.removeEventListener('visibilitychange', onVisible);
       client.stop();
       setState('closed');
     };

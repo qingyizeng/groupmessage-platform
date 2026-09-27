@@ -5,7 +5,7 @@ import type { Pool, Queryable } from '../../db/pool';
 import { withTx } from '../../db/tx';
 import type { Logger } from '../../lib/logger';
 import { emitMessageEvent, type MessageRow } from '../messages/outbound';
-import { scheduleTask, type Task } from '../tasks/scheduledTasks';
+import { ensureTask, recurringTask, scheduleTask, type Task } from '../tasks/scheduledTasks';
 
 const EXTENSIONS: Record<string, string> = {
   'image/png': '.png',
@@ -54,11 +54,7 @@ export class MediaService {
 
   /** Makes sure the recurring cleanup task exists (without postponing an already scheduled run). */
   async ensureCleanupScheduled(): Promise<void> {
-    await this.opts.pool.query(
-      `INSERT INTO scheduled_tasks (kind, ref, run_at) VALUES ('media_cleanup', 'global', now() + make_interval(secs => $1))
-       ON CONFLICT (kind, ref) DO NOTHING`,
-      [this.opts.cleanupIntervalMs / 1000],
-    );
+    await ensureTask(this.opts.pool, 'media_cleanup', 'global', this.opts.cleanupIntervalMs);
   }
 
   handleDownloadTask = async (task: Task): Promise<void> => {
@@ -108,15 +104,9 @@ export class MediaService {
     log.debug({ messageId: msg.id, relative, bytes: bytes.length, mediaDir }, 'media downloaded');
   };
 
-  handleCleanupTask = async (): Promise<void> => {
-    try {
-      await this.cleanup();
-    } finally {
-      await withTx(this.opts.pool, (tx) =>
-        scheduleTask(tx, 'media_cleanup', 'global', new Date(Date.now() + this.opts.cleanupIntervalMs)),
-      );
-    }
-  };
+  get handleCleanupTask() {
+    return recurringTask(this.opts.pool, 'media_cleanup', 'global', this.opts.cleanupIntervalMs, () => this.cleanup());
+  }
 
   /** Deletes expired files (except those of groups with a running agent run) and orphaned files. */
   async cleanup(): Promise<{ deleted: number; orphans: number }> {
