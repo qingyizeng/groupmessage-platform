@@ -5,6 +5,7 @@
 - 后端：Node.js + TypeScript + PostgreSQL（Fastify、node-postgres、ws）
 - 前端：React 18 + TypeScript + Vite（TanStack Query、antd）
 - 设计文档：[docs/architecture.md](docs/architecture.md)（架构、数据模型、各流程的一致性设计、需求歧义与取舍）
+- 架构图集：[docs/diagrams.md](docs/diagrams.md)（部署、组件、状态机、时序、ER 图、前端，共 23 张 Mermaid 图）
 
 ## 快速开始
 

@@ -13,7 +13,7 @@
 | D1 | 任意时刻崩溃重启，所有行为仍成立 | 总则 | 所有状态与"待办"只存在 PG；进程无关键内存状态；每个副作用前先落库（write-ahead） |
 | D2 | 事件 at-least-once + 乱序 ≤1s + 补投任意旧消息 + 断线补拉 | 2.1 事件流 | Inbox 表（`event_id` 主键去重）+ 带安全回退的游标 + **与顺序无关的事件处理器** |
 | D3 | send 结果未知（504 / 我方超时 / 崩溃在请求中），网关不去重 | A2 | 出站状态机：确认"没发出"之前绝不重发；`clientMsgId` 由我方预生成并先落库 |
-| D4 | 多来源（事件/同步错误/操作员）触发同一后果，要么全生效要么全不生效 | A1 | **收口函数（chokepoint）**：`transitionAccount` / `updateOutbound` / `markGroupUnreachable`，后果在同一事务里完成 |
+| D4 | 多来源（事件/同步错误/操作员）触发同一后果，要么全生效要么全不生效 | A1 | **收口函数（chokepoint）**：`applyTransition` / `updateOutbound` / `markGroupUnreachable`，后果在同一事务里完成 |
 | D5 | 并发 & 多实例下的互斥 | A1/A5/B1 | CAS 条件更新、部分唯一索引、行锁 `NOWAIT`、租约（lease） |
 | D6 | Agent run 在任意一步中断后续跑，不重复外部效果 | A5.8 | 每步拆成持久化的子阶段 + 工具效果日志（effect journal） |
 | D7 | 推给前端的事件必须对应已提交状态、seq 单调、可补发 | A1/A4/B4 | 事务性 outbox + **单发布者提交后分配 seq**（规避 bigserial 提交乱序陷阱） |
@@ -23,42 +23,20 @@
 
 ## 1. 总体架构
 
-```mermaid
-flowchart TB
-  subgraph Web[控制台 apps/web]
-    UI[React 18 + TanStack Query] --- WSC[WS 客户端<br/>lastSeq 去重补发]
-  end
+完整的架构图集见 [diagrams.md](diagrams.md)，全部用 Mermaid 绘制，GitHub 上可以直接渲染：
 
-  subgraph Server[apps/server（可多实例）]
-    API[Fastify REST<br/>auth / RBAC / zod 校验]
-    WSS[WS 网关]
-    subgraph Workers[后台 worker（DB 协调）]
-      SSE[SSE 消费者<br/>leader-only]
-      INB[Inbox 处理器]
-      DSP[出站发送器]
-      REC[未知状态核对器]
-      SCH[定时任务调度器]
-      AGR[Agent Run 执行器]
-      JOB[Job 执行器<br/>建群 / leave-all]
-      PUB[WS 发布者<br/>leader-only]
-    end
-    CORE[领域层 + 收口函数<br/>transitionAccount / updateOutbound / markGroupUnreachable]
-  end
+| 视角 | 图 |
+|---|---|
+| 部署与外部依赖 | [§1](diagrams.md#1-部署与外部依赖) |
+| 后端分层组件、worker、定时任务种类 | [§2](diagrams.md#2-后端组件) |
+| 收口函数与挂接点 | [§3](diagrams.md#3-跨模块联动收口函数与挂接点) |
+| 多实例协调 | [§4](diagrams.md#4-多实例协调) |
+| 事件接入、出站发送、账号状态机 | [§5–7](diagrams.md#5-网关事件接入) |
+| Agent run、定时序列、建群 / 退群任务 | [§8–10](diagrams.md#8-agent-run) |
+| WS 实时推送 | [§11](diagrams.md#11-实时推送) |
+| 数据模型（ER 图） | [§12](diagrams.md#12-数据模型) |
+| 前端架构、登录会话 | [§13–14](diagrams.md#13-前端架构) |
 
-  PG[(PostgreSQL 16<br/>唯一事实来源)]
-  GW[消息网关<br/>mock-gateway]
-  AG[Agent 服务<br/>mock-agent / llm-agent]
-
-  UI -- REST --> API
-  WSC -- WS --> WSS
-  API --> CORE
-  Workers --> CORE
-  CORE --> PG
-  SSE -- GET /events?since --> GW
-  DSP & JOB & AGR -- HTTP --> GW
-  AGR -- /agent/turn, /agent/audit --> AG
-  PUB -- LISTEN/NOTIFY --> WSS
-```
 
 **进程模型**：只有一种服务进程，同时跑 API 与所有 worker；可以起 N 个实例。
 
@@ -93,7 +71,7 @@ flowchart TB
 1. **PG 是唯一事实来源**。内存只做缓存和唤醒信号，丢了不影响正确性。
 2. **Write-ahead**：对外产生副作用之前，先在一个已提交的事务里记下"意图"。例如出站消息先写 `queued` 并设置 `dispatch_started_at`；kick 先把工具执行记录标为 `executing`；断开连接先写一个 `gateway_disconnect` 任务。
 3. **收口函数**：跨模块的后果只在少数函数里实现。任何来源都调同一个函数，在同一事务里完成全部后果，因此"从任何来源进入终态结果都一样，要么全生效要么全不生效"是由结构保证的。
-   - `transitionAccount(tx, accountId, expectedFrom | ANY_NON_TERMINAL, to, source)`
+   - `transitions.applyTransition(tx, row, to, source)`：调用方先用 `lockAccount` 锁行（操作员路径再比对 expectedFrom），非法转换直接抛错
    - `updateOutbound(tx, messageId, patch)`：负责把状态联动到序列步骤、唤醒 agent 等待者、写 WS 事件
    - `markGroupUnreachable(tx, groupId)`
 4. **状态只前进**：所有状态更新都是带 `WHERE status IN (...)` 或按状态排名比较的条件 UPDATE，乱序、重复的事件不会让状态回退。
@@ -278,7 +256,7 @@ sequenceDiagram
 | `message_sent` | `updateOutbound`：阶段提升到 `sent`，写入 msgId 和 sentAt，合并回流临时行 | 状态只前进 |
 | `message_failed` | `updateOutbound → failed`（按 code 执行后果） | 状态只前进；`sent` 优先 |
 | `member_joined` / `member_left` | `UPDATE … SET present = ? WHERE state_event_id < :eventId`（不存在则插入） | 按事件 id 实现后发生者胜出 |
-| `account_status` | `transitionAccount(ANY_NON_TERMINAL → 终态)` | 终态是吸收态；重复进入静默忽略 |
+| `account_status` | `applyTransition(任意非终态 → 终态)` | 终态是吸收态；重复进入静默忽略 |
 
 处理器遇到唯一约束冲突或序列化冲突时整个事务重试。例如回流消息和 `message_sent` 并发处理的情况。
 
@@ -332,12 +310,12 @@ stateDiagram-v2
   2. 行不存在 → 404。
   3. `expectedFrom → to` 不在转移表上 → `ILLEGAL_TRANSITION`。
   4. 当前状态 ≠ `expectedFrom` → `CAS_CONFLICT`。
-  5. 调 `transitionAccount`。
+  5. 调 `applyTransition`。
   6. 目标为 `disconnected` 或 `idle` 时，在同一事务里写入 `gateway_disconnect` 定时任务。disconnect 是幂等的，由调度器执行并重试直到成功，所以不会出现"库里改了，网关调用却丢了"。
 
   注意：步骤 3 和 4 的顺序决定了错误码的优先级。题目里 "expectedFrom → to 不在表上" 判的是请求本身，所以先查非法转移，再查 CAS。
 - **`POST /connect`**：持行锁（NOWAIT）→ 检查当前是 `idle` 或 `disconnected` → 调网关 connect（幂等，同一账号返回同一 platformUserId）→ 写入 `online` 和 `platform_user_id`。网关返回 403 或 401 → 同一事务里进入终态。这里事务会跨一次 HTTP 调用，但网关 connect 很快、只锁一行，可以接受。
-- **`transitionAccount` 进入终态时**，在同一事务里完成：
+- **`applyTransition` 进入终态时**，在同一事务里完成：
   1. 条件更新状态；已经处于任一终态则静默返回（幂等）。
   2. 该账号在所有群的成员行 `present=false`。
   3. 该账号 `phase='queued'` 的消息 → `cancelled/ACCOUNT_TERMINAL`。处于 `dispatching`、`unknown`、`accepted` 的不动，结果由网关决定。
